@@ -169,6 +169,20 @@ PATIENT PROFILE:
         else:
             context += "\nLATEST TEMPERATURE: NO reading found in database for this user.\n"
 
+        stress = supabase.table("user_stress")\
+            .select("*")\
+            .eq("user_id", user_id)\
+            .order("measured_at", desc=True)\
+            .limit(3)\
+            .execute()
+        if stress.data:
+            context += "\nRECENT STRESS LEVEL:\n"
+            for s in reversed(stress.data):
+                lbl = f" ({s.get('label')})" if s.get('label') else ""
+                context += f"- {_to_ist(s.get('measured_at'))}: level {s.get('stress_value')}{lbl}\n"
+        else:
+            context += "\nRECENT STRESS LEVEL: NO reading found in database for this user.\n"
+
         result = context.strip() if context else "No patient data found."
         print(f"[get_patient_data] user_id={user_id}\n---TOOL OUTPUT SENT TO LLM---\n{result}\n---END TOOL OUTPUT---")
         return result

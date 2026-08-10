@@ -430,6 +430,118 @@ async def get_steps_card_data(user_id: str) -> Optional[dict[str, Any]]:
         print(f"Error fetching steps card data: {e}")
         return demo
 
+async def get_temperature_card_data(user_id: str) -> Optional[dict[str, Any]]:
+    if not user_id or user_id == "anonymous":
+        return None
+    try:
+        now = dt.utcnow()
+        cutoff_str = _fmt_date(now - timedelta(days=6))
+
+        def _query():
+            return supabase.table("user_temp").select("*").eq("user_id", user_id)\
+                .gte("measured_at", cutoff_str)\
+                .order("measured_at", desc=False).execute()
+
+        result = await asyncio.to_thread(_query)
+        rows = result.data or []
+        if not rows:
+            return None
+
+        by_date: dict[str, list[float]] = {}
+        for r in rows:
+            try:
+                measured_dt = dt.fromisoformat(str(r.get("measured_at")).replace("Z", "+00:00"))
+            except Exception:
+                continue
+            date_key = _fmt_date(measured_dt)
+            val = r.get("value_c")
+            if val is not None:
+                by_date.setdefault(date_key, []).append(float(val))
+
+        values, labels = [], []
+        for i in range(7):
+            day = now - timedelta(days=6 - i)
+            day_vals = by_date.get(_fmt_date(day), [])
+            avg_day_val = round(sum(day_vals) / len(day_vals), 1) if day_vals else 0.0
+            values.append(avg_day_val)
+            labels.append(_WEEKDAY_ABBR[day.weekday()])
+
+        non_zero = [v for v in values if v > 0]
+        if not non_zero:
+            return None
+
+        all_vals = [float(r["value_c"]) for r in rows if r.get("value_c") is not None]
+        return {
+            "type": "temperature_trend",
+            "data": {
+                "avg": round(sum(non_zero) / len(non_zero), 1),
+                "min": min(all_vals) if all_vals else 0.0,
+                "max": max(all_vals) if all_vals else 0.0,
+                "unit": "°C",
+                "values": values,
+                "labels": labels,
+            }
+        }
+    except Exception as e:
+        print(f"Error fetching temperature card data: {e}")
+        return None
+
+async def get_stress_card_data(user_id: str) -> Optional[dict[str, Any]]:
+    if not user_id or user_id == "anonymous":
+        return None
+    try:
+        now = dt.utcnow()
+        cutoff_str = _fmt_date(now - timedelta(days=6))
+
+        def _query():
+            return supabase.table("user_stress").select("*").eq("user_id", user_id)\
+                .gte("measured_at", cutoff_str)\
+                .order("measured_at", desc=False).execute()
+
+        result = await asyncio.to_thread(_query)
+        rows = result.data or []
+        if not rows:
+            return None
+
+        by_date: dict[str, list[int]] = {}
+        for r in rows:
+            try:
+                measured_dt = dt.fromisoformat(str(r.get("measured_at")).replace("Z", "+00:00"))
+            except Exception:
+                continue
+            date_key = _fmt_date(measured_dt)
+            val = r.get("stress_value")
+            if val is not None:
+                by_date.setdefault(date_key, []).append(int(val))
+
+        values, labels = [], []
+        for i in range(7):
+            day = now - timedelta(days=6 - i)
+            day_vals = by_date.get(_fmt_date(day), [])
+            avg_day_val = round(sum(day_vals) / len(day_vals)) if day_vals else 0
+            values.append(avg_day_val)
+            labels.append(_WEEKDAY_ABBR[day.weekday()])
+
+        non_zero = [v for v in values if v > 0]
+        if not non_zero:
+            return None
+
+        all_vals = [int(r["stress_value"]) for r in rows if r.get("stress_value") is not None]
+        return {
+            "type": "stress_trend",
+            "data": {
+                "avg": round(sum(non_zero) / len(non_zero)),
+                "min": min(all_vals) if all_vals else 0,
+                "max": max(all_vals) if all_vals else 0,
+                "unit": "",
+                "values": values,
+                "labels": labels,
+            }
+        }
+    except Exception as e:
+        print(f"Error fetching stress card data: {e}")
+        return None
+
 async def run_agent(message: str, user_id: str) -> tuple[str, Optional[dict[str, Any]]]:
     try:
         t_start = time.monotonic()
@@ -467,6 +579,10 @@ async def run_agent(message: str, user_id: str) -> tuple[str, Optional[dict[str,
             card = await get_hr_card_data(user_id)
         elif any(k in msg_lower for k in ["steps", "walked", "walking", "step count"]):
             card = await get_steps_card_data(user_id)
+        elif any(k in msg_lower for k in ["temperature", "temp", "fever", "body temp", "body temperature"]):
+            card = await get_temperature_card_data(user_id)
+        elif any(k in msg_lower for k in ["stress", "stress level", "anxiety", "stressed"]):
+            card = await get_stress_card_data(user_id)
         t_card_done = time.monotonic()
 
         # TEMP DEBUG — remove once the /chat latency source is confirmed.
