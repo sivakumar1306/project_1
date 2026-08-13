@@ -53,9 +53,9 @@ async def get_conversations(user_id: str):
             .eq("user_id", user_id)\
             .order("created_at", desc=True)\
             .execute()
-        return {"conversations": result.data}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        return {"conversations": result.data or []}
+    except Exception:
+        return {"conversations": []}
 
 @router.get("/history/messages/{conversation_id}")
 async def get_messages(conversation_id: str):
@@ -65,6 +65,6 @@ async def get_messages(conversation_id: str):
             .eq("conversation_id", conversation_id)\
             .order("created_at")\
             .execute()
-        return {"messages": result.data}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        return {"messages": result.data or []}
+    except Exception:
+        return {"messages": []}
