@@ -187,7 +187,7 @@ Rules:
 - The headline should read like a short, human sentence (max ~15 words), split into headline_parts so exactly one clause can be highlighted — set highlight: true only on the most notable or concerning clause, based on which items in the list are marked alarming.
 - If any item is alarming, the headline and subtext should center on that item specifically, by its exact title and subtitle wording given.
 - If nothing is alarming, write an encouraging but honest headline reflecting the real changes given (e.g. improving trends).
-- If the list is empty, headline_parts should read "Not enough data yet to show trends" (highlight: false), and subtext should briefly explain to keep wearing the ring.
+- If the list is empty, headline_parts should read "Please connect your ring to view analysis" (highlight: false), and subtext should ask the user to connect their ring and sync readings.
 - Never mention a metric, number, or claim that is not present in the given list."""
 
 
@@ -197,8 +197,8 @@ def _template_headline(changes: list, alarming_changes: list) -> dict:
     computed changes, never invented."""
     if not changes:
         return {
-            "headline_parts": [{"text": "Not enough data yet to summarize your trends.", "highlight": False}],
-            "subtext": "Keep wearing your ring and check back after a few more days of readings.",
+            "headline_parts": [{"text": "Please connect your ring to view analysis", "highlight": False}],
+            "subtext": "No biometric data detected. Please connect your ring to view analysis and sync your readings.",
         }
     if alarming_changes:
         worst = alarming_changes[0]

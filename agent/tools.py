@@ -183,7 +183,7 @@ PATIENT PROFILE:
         else:
             context += "\nRECENT STRESS LEVEL: NO reading found in database for this user.\n"
 
-        result = context.strip() if context else "No patient data found."
+        result = context.strip() if context else "No biometric or ring data found for this user. The ring is not connected or has not synced readings. Tell the user: Please connect your ring to view analysis."
         print(f"[get_patient_data] user_id={user_id}\n---TOOL OUTPUT SENT TO LLM---\n{result}\n---END TOOL OUTPUT---")
         return result
     except Exception as e:
