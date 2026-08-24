@@ -309,6 +309,60 @@ async def _call_llm_for_steady_status(current_status_parts: list) -> dict:
     return parsed
 
 
+def _generate_suggested_questions(changes: list, alarming_changes: list, current_status_parts: list) -> list[str]:
+    questions = []
+    if alarming_changes:
+        worst = alarming_changes[0]
+        key = worst.get("key")
+        if key == "blood_pressure":
+            questions.append("Why is my blood pressure elevated?")
+            questions.append("What lifestyle changes help lower blood pressure?")
+        elif key == "heart_rate":
+            questions.append("Why is my resting heart rate elevated?")
+            questions.append("When should I consult a doctor about my heart rate?")
+        elif key == "spo2":
+            questions.append("What causes a drop in blood oxygen?")
+            questions.append("How can I improve my SpO2 level?")
+        elif key == "stress":
+            questions.append("How can I manage my high stress level?")
+            questions.append("What techniques reduce stress quickly?")
+        elif key == "temperature":
+            questions.append("Should I be concerned about my body temperature?")
+            questions.append("What are common causes of temperature changes?")
+        else:
+            questions.append(f"Why does my {worst['title'].lower()} need attention?")
+            questions.append(f"How can I manage my {worst['title'].lower()}?")
+
+    for c in changes:
+        if len(questions) >= 3:
+            break
+        k = c.get("key")
+        if k == "steps":
+            if c.get("improving"):
+                questions.append("How can I maintain my step increase?")
+            else:
+                questions.append("Tips to increase my daily step count")
+        elif k == "sleep":
+            questions.append("How can I improve my deep sleep?")
+        elif k == "hrv":
+            questions.append("What affects my heart rate variability?")
+        elif k == "heart_rate" and "Why is my resting heart rate elevated?" not in questions:
+            questions.append("What is a healthy resting heart rate for me?")
+
+    defaults = [
+        "How does my sleep look this week?",
+        "How is my resting heart rate trending?",
+        "What does my HRV mean for recovery?",
+    ]
+    for d in defaults:
+        if len(questions) >= 3:
+            break
+        if d not in questions:
+            questions.append(d)
+
+    return questions[:3]
+
+
 @router.get("/insights/{user_id}")
 async def get_insights(user_id: str):
     # Fixed 30-day ceiling — see MAX_INSIGHT_DAYS. The app no longer lets the
@@ -581,6 +635,7 @@ async def get_insights(user_id: str):
             "days_used": days_used,
             "headline_parts": headline_data["headline_parts"],
             "subtext": headline_data["subtext"],
+            "suggested_questions": _generate_suggested_questions(changes, alarming_changes, current_status_parts),
             "updates": [
                 {
                     "key": c["key"],
