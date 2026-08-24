@@ -61,12 +61,51 @@ def get_patient_data(user_id: str) -> str:
         user_id = user_id.strip().strip('"').strip("'")
         context = ""
 
-        profile = supabase.table("user_profiles")\
-            .select("*")\
-            .eq("id", user_id)\
-            .maybe_single()\
-            .execute()
-        if profile.data:
+        from concurrent.futures import ThreadPoolExecutor
+
+        def _fetch_profile():
+            try:
+                return supabase.table("user_profiles").select("*").eq("id", user_id).maybe_single().execute()
+            except Exception:
+                return None
+
+        def _fetch_curr_hr():
+            try:
+                return supabase.table("user_hr_readings").select("*").eq("user_id", user_id).neq("source", "demo_seed").order("measured_at", desc=True).limit(1).execute()
+            except Exception:
+                return None
+
+        def _fetch_table(table, order_col="date", limit=3):
+            try:
+                r = supabase.table(table).select("*").eq("user_id", user_id).order(order_col, desc=True).limit(limit).execute()
+                return r.data or []
+            except Exception:
+                return []
+
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            f_profile = executor.submit(_fetch_profile)
+            f_curr_hr = executor.submit(_fetch_curr_hr)
+            f_sleep = executor.submit(_fetch_table, "user_sleep", "date", 3)
+            f_hr = executor.submit(_fetch_table, "user_hr", "date", 3)
+            f_hrv = executor.submit(_fetch_table, "user_hrv", "date", 3)
+            f_spo2 = executor.submit(_fetch_table, "user_spo2", "date", 3)
+            f_steps = executor.submit(_fetch_table, "user_steps", "date", 3)
+            f_bp = executor.submit(_fetch_table, "user_bp", "measured_at", 1)
+            f_temp = executor.submit(_fetch_table, "user_temp", "measured_at", 1)
+            f_stress = executor.submit(_fetch_table, "user_stress", "measured_at", 3)
+
+            profile = f_profile.result()
+            current_hr = f_curr_hr.result()
+            sleep = f_sleep.result()
+            hr = f_hr.result()
+            hrv = f_hrv.result()
+            spo2 = f_spo2.result()
+            steps = f_steps.result()
+            bp = f_bp.result()
+            temp = f_temp.result()
+            stress = f_stress.result()
+
+        if profile and profile.data:
             p = profile.data
             context += f"""
 PATIENT PROFILE:
@@ -77,107 +116,62 @@ PATIENT PROFILE:
 - Weight: {p.get('weight_kg', 'unknown')} kg
 """
 
-        def latest(table, order_col="date"):
-            r = supabase.table(table)\
-                .select("*")\
-                .eq("user_id", user_id)\
-                .order(order_col, desc=True)\
-                .limit(3)\
-                .execute()
-            return r.data or []
+        # Live/current reading
+        if current_hr and current_hr.data:
+            c = current_hr.data[0]
+            measured_at_str = c.get("measured_at")
+            staleness_note = ""
+            try:
+                measured_dt = datetime.fromisoformat(measured_at_str.replace("Z", "+00:00"))
+                age_hours = (datetime.now(timezone.utc) - measured_dt).total_seconds() / 3600
+                if age_hours > 3:
+                    staleness_note = f" [STALE: this reading is {age_hours:.1f} hours old, NOT real-time]"
+            except Exception:
+                pass
+            measured_at_local = _to_ist(measured_at_str)
+            context += f"\nCURRENT HEART RATE (most recent single reading in DB): {c.get('value_bpm')} bpm, measured at {measured_at_local}{staleness_note}\n"
+        else:
+            context += "\nCURRENT HEART RATE: NO reading found in database for this user.\n"
 
-        # Live/current reading — from the raw per-measurement table, NOT the daily
-        # aggregate (user_hr only has avg/min/max per day, no single "current" value).
-        # Isolated in its own try/except so a failure here can't wipe out the rest
-        # of the patient context (profile, sleep, etc.) via the outer except below.
-        try:
-            current_hr = supabase.table("user_hr_readings")\
-                .select("*")\
-                .eq("user_id", user_id)\
-                .neq("source", "demo_seed")\
-                .order("measured_at", desc=True)\
-                .limit(1)\
-                .execute()
-            if current_hr.data:
-                c = current_hr.data[0]
-                measured_at_str = c.get("measured_at")
-                staleness_note = ""
-                try:
-                    measured_dt = datetime.fromisoformat(measured_at_str.replace("Z", "+00:00"))
-                    age_hours = (datetime.now(timezone.utc) - measured_dt).total_seconds() / 3600
-                    if age_hours > 3:
-                        staleness_note = f" [STALE: this reading is {age_hours:.1f} hours old, NOT real-time]"
-                except Exception:
-                    pass
-                measured_at_local = _to_ist(measured_at_str)
-                context += f"\nCURRENT HEART RATE (most recent single reading in DB): {c.get('value_bpm')} bpm, measured at {measured_at_local}{staleness_note}\n"
-            else:
-                context += "\nCURRENT HEART RATE: NO reading found in database for this user.\n"
-        except Exception as e:
-            context += f"\nCURRENT HEART RATE: query failed ({str(e)}). Do NOT guess a value.\n"
-
-        sleep = latest("user_sleep")
         if sleep:
             context += "\nRECENT SLEEP:\n"
             for day in reversed(sleep):
                 total_min = day.get("total_duration") or 0
                 context += f"- {day.get('date')}: {total_min // 60}h {total_min % 60}m, score {day.get('sleep_score')}/100\n"
 
-        hr = latest("user_hr")
         if hr:
             context += "\nHISTORICAL DAILY HEART RATE (NOT the current/live reading):\n"
             for day in reversed(hr):
                 context += f"- {day.get('date')}: avg {day.get('avg_hr')} bpm (min {day.get('min_hr')}, max {day.get('max_hr')})\n"
 
-        hrv = latest("user_hrv")
         if hrv:
             context += "\nRECENT HRV:\n"
             for day in reversed(hrv):
                 context += f"- {day.get('date')}: avg {day.get('avg_hrv')} ms\n"
 
-        spo2 = latest("user_spo2")
         if spo2:
             context += "\nRECENT SPO2:\n"
             for day in reversed(spo2):
                 context += f"- {day.get('date')}: avg {day.get('avg_spo2')}%\n"
 
-        steps = latest("user_steps")
         if steps:
             context += "\nRECENT STEPS:\n"
             for day in reversed(steps):
                 context += f"- {day.get('date')}: {day.get('steps')} steps, {day.get('calories')} kcal\n"
 
-        bp = supabase.table("user_bp")\
-            .select("*")\
-            .eq("user_id", user_id)\
-            .order("measured_at", desc=True)\
-            .limit(1)\
-            .execute()
-        if bp.data:
-            b = bp.data[0]
+        if bp:
+            b = bp[0]
             context += f"\nLATEST BLOOD PRESSURE: {b.get('systolic')}/{b.get('diastolic')} (measured {_to_ist(b.get('measured_at'))})\n"
 
-        temp = supabase.table("user_temp")\
-            .select("*")\
-            .eq("user_id", user_id)\
-            .order("measured_at", desc=True)\
-            .limit(1)\
-            .execute()
-        if temp.data:
-            t = temp.data[0]
+        if temp:
+            t = temp[0]
             context += f"\nLATEST TEMPERATURE: {t.get('value_c')} °C (measured {_to_ist(t.get('measured_at'))})\n"
         else:
             context += "\nLATEST TEMPERATURE: NO reading found in database for this user.\n"
 
-        stress = supabase.table("user_stress")\
-            .select("*")\
-            .eq("user_id", user_id)\
-            .order("measured_at", desc=True)\
-            .limit(3)\
-            .execute()
-        if stress.data:
+        if stress:
             context += "\nRECENT STRESS LEVEL:\n"
-            for s in reversed(stress.data):
+            for s in reversed(stress):
                 lbl = f" ({s.get('label')})" if s.get('label') else ""
                 context += f"- {_to_ist(s.get('measured_at'))}: level {s.get('stress_value')}{lbl}\n"
         else:

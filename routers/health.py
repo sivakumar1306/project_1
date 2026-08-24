@@ -243,7 +243,7 @@ async def _call_llm_for_headline(changes: list, alarming_changes: list) -> dict:
 
     llm = ChatMistralAI(
         api_key=os.getenv("MISTRAL_API_KEY"),
-        model="mistral-large-latest",
+        model="mistral-small-latest",
         temperature=0.2,
     )
     # await .ainvoke(), not the blocking .invoke() — this single call was the
@@ -291,7 +291,7 @@ async def _call_llm_for_steady_status(current_status_parts: list) -> dict:
 
     llm = ChatMistralAI(
         api_key=os.getenv("MISTRAL_API_KEY"),
-        model="mistral-large-latest",
+        model="mistral-small-latest",
         temperature=0.2,
     )
     result = await llm.ainvoke([
@@ -320,12 +320,27 @@ async def get_insights(user_id: str):
         # Tier 2 steady-vitals summary when nothing trended significantly.
         current_status_parts = []
 
+        (
+            sleep_rows,
+            hrv_rows,
+            hr_rows,
+            bp_rows,
+            spo2_rows,
+            steps_rows,
+            stress_rows,
+            temp_rows,
+        ) = await asyncio.gather(
+            _rows_in_range("user_sleep", user_id, days, "date"),
+            _rows_in_range("user_hrv", user_id, days, "date"),
+            _rows_in_range("user_hr", user_id, days, "date"),
+            _bp_rows_in_range(user_id, days),
+            _rows_in_range("user_spo2", user_id, days, "date"),
+            _rows_in_range("user_steps", user_id, days, "date"),
+            _measured_at_rows_in_range("user_stress", user_id, days),
+            _measured_at_rows_in_range("user_temp", user_id, days),
+        )
+
         # --- Sleep (user_sleep: date, total_duration, sleep_score) ---
-        sleep_rows = await _rows_in_range("user_sleep", user_id, days, "date")
-        # total_duration is stored in seconds in the DB (confirmed via direct
-        # query) — the sleep card builder in graph.py already normalizes this,
-        # but this insights code was treating it as already-minutes, inflating
-        # every sleep delta ~60x (e.g. "5d 20h less sleep" instead of minutes).
         for r in sleep_rows:
             if r.get("total_duration"):
                 r["total_duration"] = r["total_duration"] // 60
@@ -348,7 +363,6 @@ async def get_insights(user_id: str):
                 })
 
         # --- HRV (user_hrv: date, avg_hrv ms) — lower HRV trend is the concern ---
-        hrv_rows = await _rows_in_range("user_hrv", user_id, days, "date")
         valid_hrv_rows = [r for r in hrv_rows if (r.get("avg_hrv") or 0) > 0]
         first, second = _split_avg(valid_hrv_rows, "avg_hrv")
         latest_hrv = valid_hrv_rows[-1].get("avg_hrv") if valid_hrv_rows else None
@@ -368,7 +382,6 @@ async def get_insights(user_id: str):
                 })
 
         # --- Resting heart rate (user_hr: date, avg_hr) ---
-        hr_rows = await _rows_in_range("user_hr", user_id, days, "date")
         valid_hr_rows = [r for r in hr_rows if (r.get("avg_hr") or 0) > 0]
         first, second = _split_avg(valid_hr_rows, "avg_hr")
         latest_avg_hr = valid_hr_rows[-1].get("avg_hr") if valid_hr_rows else None
@@ -393,7 +406,6 @@ async def get_insights(user_id: str):
                 })
 
         # --- Blood pressure (user_bp: measured_at, systolic, diastolic) ---
-        bp_rows = await _bp_rows_in_range(user_id, days)
         first_s, second_s = _split_avg(bp_rows, "systolic")
         latest_systolic = bp_rows[-1].get("systolic") if bp_rows else None
         latest_diastolic = bp_rows[-1].get("diastolic") if bp_rows else None
@@ -419,7 +431,6 @@ async def get_insights(user_id: str):
                 })
 
         # --- SpO2 (user_spo2: date, avg_spo2) — alarming if genuinely low ---
-        spo2_rows = await _rows_in_range("user_spo2", user_id, days, "date")
         latest_spo2 = spo2_rows[-1].get("avg_spo2") if spo2_rows else None
         if latest_spo2:
             current_status_parts.append(f"SpO2 {round(latest_spo2)}%")
@@ -434,7 +445,6 @@ async def get_insights(user_id: str):
             })
 
         # --- Steps (user_steps: date, steps) ---
-        steps_rows = await _rows_in_range("user_steps", user_id, days, "date")
         valid_steps_rows = [r for r in steps_rows if (r.get("steps") or 0) > 0]
         first, second = _split_avg(valid_steps_rows, "steps")
         latest_steps = valid_steps_rows[-1].get("steps") if valid_steps_rows else None
@@ -455,7 +465,6 @@ async def get_insights(user_id: str):
 
         # --- Stress (user_stress: measured_at, stress_value, label) ---
         # Lower stress trend = improving, mirrors the HRV pattern.
-        stress_rows = await _measured_at_rows_in_range("user_stress", user_id, days)
         first, second = _split_avg(stress_rows, "stress_value")
         latest_stress_row = stress_rows[-1] if stress_rows else None
         latest_stress_val = latest_stress_row.get("stress_value") if latest_stress_row else None
@@ -483,7 +492,6 @@ async def get_insights(user_id: str):
         # --- Temperature (user_temp: measured_at, value_c) ---
         # Alarming if the latest reading is outside a normal range, mirroring
         # the SpO2 "latest value" style check rather than a trend delta.
-        temp_rows = await _measured_at_rows_in_range("user_temp", user_id, days)
         latest_temp = temp_rows[-1].get("value_c") if temp_rows else None
         if latest_temp:
             current_status_parts.append(f"temperature {latest_temp:.1f}°C")
