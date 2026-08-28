@@ -93,6 +93,7 @@ def get_patient_data(user_id: str) -> str:
             f_bp = executor.submit(_fetch_table, "user_bp", "measured_at", 1)
             f_temp = executor.submit(_fetch_table, "user_temp", "measured_at", 1)
             f_stress = executor.submit(_fetch_table, "user_stress", "measured_at", 3)
+            f_cycles = executor.submit(_fetch_table, "user_cycles", "period_start", 2)
 
             profile = f_profile.result()
             current_hr = f_curr_hr.result()
@@ -104,6 +105,7 @@ def get_patient_data(user_id: str) -> str:
             bp = f_bp.result()
             temp = f_temp.result()
             stress = f_stress.result()
+            cycles = f_cycles.result()
 
         if profile and profile.data:
             p = profile.data
@@ -176,6 +178,15 @@ PATIENT PROFILE:
                 context += f"- {_to_ist(s.get('measured_at'))}: level {s.get('stress_value')}{lbl}\n"
         else:
             context += "\nRECENT STRESS LEVEL: NO reading found in database for this user.\n"
+
+        if cycles:
+            context += "\nMENSTRUAL CYCLE LOGS:\n"
+            for cy in reversed(cycles):
+                p_start = cy.get("period_start") or "unknown"
+                p_end = cy.get("period_end") or "ongoing"
+                c_len = cy.get("cycle_length") or 28
+                p_len = cy.get("period_length") or 5
+                context += f"- Period start: {p_start}, period end: {p_end}, cycle length: {c_len} days, period length: {p_len} days\n"
 
         result = context.strip() if context else "No biometric or ring data found for this user. The ring is not connected or has not synced readings. Tell the user: Please connect your ring to view analysis."
         print(f"[get_patient_data] user_id={user_id}\n---TOOL OUTPUT SENT TO LLM---\n{result}\n---END TOOL OUTPUT---")

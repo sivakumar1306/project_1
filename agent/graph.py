@@ -542,6 +542,74 @@ async def get_stress_card_data(user_id: str) -> Optional[dict[str, Any]]:
         print(f"Error fetching stress card data: {e}")
         return None
 
+async def get_cycle_card_data(user_id: str) -> Optional[dict[str, Any]]:
+    demo = {
+        "type": "cycle_trend",
+        "data": {
+            "period_start": "2026-07-17",
+            "cycle_length": 28,
+            "period_length": 5,
+            "current_day": 14,
+            "phase": "Ovulation Window",
+            "days_until_next": 14,
+        }
+    }
+    if not user_id or user_id == "anonymous":
+        return demo
+    try:
+        def _query():
+            return supabase.table("user_cycles").select("*").eq("user_id", user_id)\
+                .order("period_start", desc=True).limit(1).execute()
+
+        result = await asyncio.to_thread(_query)
+        rows = result.data or []
+        if not rows:
+            return demo
+
+        c = rows[0]
+        p_start_str = c.get("period_start")
+        cycle_len = c.get("cycle_length") or 28
+        period_len = c.get("period_length") or 5
+
+        current_day = 1
+        days_until_next = cycle_len
+        phase = "Follicular Phase"
+
+        if p_start_str:
+            try:
+                p_start_dt = dt.strptime(p_start_str, "%Y-%m-%d")
+                today = dt.utcnow().date()
+                delta_days = (today - p_start_dt.date()).days
+                if delta_days >= 0:
+                    current_day = (delta_days % cycle_len) + 1
+                    days_until_next = cycle_len - (delta_days % cycle_len)
+
+                    if current_day <= period_len:
+                        phase = "Menstrual Phase"
+                    elif current_day <= 13:
+                        phase = "Follicular Phase"
+                    elif current_day <= 16:
+                        phase = "Ovulation Window"
+                    else:
+                        phase = "Luteal Phase"
+            except Exception:
+                pass
+
+        return {
+            "type": "cycle_trend",
+            "data": {
+                "period_start": p_start_str or "Unknown",
+                "cycle_length": cycle_len,
+                "period_length": period_len,
+                "current_day": current_day,
+                "phase": phase,
+                "days_until_next": days_until_next,
+            }
+        }
+    except Exception as e:
+        print(f"Error fetching cycle card data: {e}")
+        return demo
+
 async def run_agent(message: str, user_id: str) -> tuple[str, Optional[dict[str, Any]]]:
     try:
         t_start = time.monotonic()
@@ -583,6 +651,8 @@ async def run_agent(message: str, user_id: str) -> tuple[str, Optional[dict[str,
             card = await get_temperature_card_data(user_id)
         elif any(k in msg_lower for k in ["stress", "stress level", "anxiety", "stressed"]):
             card = await get_stress_card_data(user_id)
+        elif any(k in msg_lower for k in ["period", "cycle", "menstrual", "menstruation", "ovulation", "pms", "fertile", "women health"]):
+            card = await get_cycle_card_data(user_id)
         t_card_done = time.monotonic()
 
         # TEMP DEBUG — remove once the /chat latency source is confirmed.
