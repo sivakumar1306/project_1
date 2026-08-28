@@ -186,7 +186,23 @@ PATIENT PROFILE:
                 p_end = cy.get("period_end") or "ongoing"
                 c_len = cy.get("cycle_length") or 28
                 p_len = cy.get("period_length") or 5
-                context += f"- Period start: {p_start}, period end: {p_end}, cycle length: {c_len} days, period length: {p_len} days\n"
+                est_next_str = "unknown"
+                days_until = "unknown"
+                curr_day_str = "unknown"
+                if p_start != "unknown":
+                    try:
+                        p_start_dt = datetime.strptime(p_start, "%Y-%m-%d")
+                        today = datetime.utcnow().date()
+                        delta_days = (today - p_start_dt.date()).days
+                        if delta_days >= 0:
+                            curr_day = (delta_days % c_len) + 1
+                            days_until = c_len - (delta_days % c_len)
+                            next_dt = today + timedelta(days=days_until)
+                            est_next_str = next_dt.strftime("%d %B %Y")
+                            curr_day_str = f"Day {curr_day}"
+                    except Exception:
+                        pass
+                context += f"- Period start: {p_start}, period end: {p_end}, cycle length: {c_len} days, period length: {p_len} days. Currently at {curr_day_str}. Estimated next period: {est_next_str} (in {days_until} days).\n"
 
         result = context.strip() if context else "No biometric or ring data found for this user. The ring is not connected or has not synced readings. Tell the user: Please connect your ring to view analysis."
         print(f"[get_patient_data] user_id={user_id}\n---TOOL OUTPUT SENT TO LLM---\n{result}\n---END TOOL OUTPUT---")
