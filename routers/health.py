@@ -244,7 +244,7 @@ async def _call_llm_for_headline(changes: list, alarming_changes: list) -> dict:
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or ""
     llm = ChatGoogleGenerativeAI(
         google_api_key=api_key,
-        model="gemini-1.5-flash",
+        model="gemini-3.6-flash",
         temperature=0.2,
     )
     # await .ainvoke(), not the blocking .invoke() — this single call was the
@@ -293,7 +293,7 @@ async def _call_llm_for_steady_status(current_status_parts: list) -> dict:
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or ""
     llm = ChatGoogleGenerativeAI(
         google_api_key=api_key,
-        model="gemini-1.5-flash",
+        model="gemini-3.6-flash",
         temperature=0.2,
     )
     result = await llm.ainvoke([
