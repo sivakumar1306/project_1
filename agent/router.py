@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import re
@@ -90,16 +91,8 @@ async def classify_query_streams(message: str) -> List[str]:
         return rule_result
 
     try:
-        api_key = (os.getenv("MISTRAL_API_KEY") or "").strip()
-        if not api_key:
-            return rule_result
-
-        llm = ChatMistralAI(
-            api_key=api_key,
-            model="mistral-small-latest",
-            temperature=0.0,
-            max_retries=3,
-        )
+        from agent.graph import get_medxai_llm
+        llm = get_medxai_llm()
 
         for attempt in range(3):
             try:

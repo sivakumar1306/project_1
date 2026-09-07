@@ -415,16 +415,8 @@ async def check_emergency_llm(message: str) -> tuple[bool, str, float]:
     from langchain_core.messages import SystemMessage, HumanMessage
 
     try:
-        api_key = (os.getenv("MISTRAL_API_KEY") or "").strip()
-        if not api_key:
-            return False, "No API key available", 0.0
-
-        llm = ChatMistralAI(
-            api_key=api_key,
-            model="mistral-small-latest",
-            temperature=0.0,
-            max_retries=3,
-        )
+        from agent.graph import get_medxai_llm
+        llm = get_medxai_llm()
 
         sys_prompt = """You are a medical safety emergency triage classifier.
 Evaluate if the user message describes or implies a potential medical emergency (such as heart attack, stroke, severe respiratory distress, acute anaphylaxis, severe head injury, uncontrollable bleeding, or self-harm).

@@ -80,12 +80,35 @@ _LLM = None
 def get_medxai_llm():
     global _LLM
     if _LLM is None:
-        key = (os.getenv("MISTRAL_API_KEY") or "").strip()
-        _LLM = ChatMistralAI(
-            api_key=key,
-            model="mistral-small-latest",
-            temperature=0.1,
-        )
+        groq_key = (os.getenv("GROQ_API_KEY") or "").strip()
+        mistral_key = (os.getenv("MISTRAL_API_KEY") or "").strip()
+        openai_key = (os.getenv("OPENAI_API_KEY") or "").strip()
+
+        if groq_key:
+            from langchain_groq import ChatGroq
+            _LLM = ChatGroq(
+                groq_api_key=groq_key,
+                model_name="llama-3.3-70b-versatile",
+                temperature=0.1,
+            )
+            print("[LLM PROVIDER] Initialized Groq (llama-3.3-70b-versatile)")
+        elif mistral_key:
+            _LLM = ChatMistralAI(
+                api_key=mistral_key,
+                model="mistral-small-latest",
+                temperature=0.1,
+            )
+            print("[LLM PROVIDER] Initialized Mistral (mistral-small-latest)")
+        elif openai_key:
+            from langchain_openai import ChatOpenAI
+            _LLM = ChatOpenAI(
+                api_key=openai_key,
+                model="gpt-4o-mini",
+                temperature=0.1,
+            )
+            print("[LLM PROVIDER] Initialized OpenAI (gpt-4o-mini)")
+        else:
+            raise ValueError("No LLM API key found! Please add GROQ_API_KEY or MISTRAL_API_KEY to your .env file.")
     return _LLM
 
 def get_medxai_agent():
