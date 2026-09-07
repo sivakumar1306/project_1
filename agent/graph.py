@@ -612,6 +612,7 @@ async def get_cycle_card_data(user_id: str) -> Optional[dict[str, Any]]:
 
 async def run_agent(message: str, user_id: str) -> tuple[str, Optional[dict[str, Any]]]:
     try:
+        t_start = time.monotonic()
         # Fast-path emergency check in Python to save 1 full LLM roundtrip
         emerg_res = check_emergency.invoke(message)
         if "EMERGENCY DETECTED" in emerg_res:
