@@ -82,14 +82,10 @@ def fallback_keyword_router(message: str) -> List[str]:
 
 async def classify_query_streams(message: str) -> List[str]:
     """
-    Fast router mapping a user query to relevant data stream names.
-    Uses rule-based classification first, falling back to LLM with 429 retry backoff.
+    Query Router mapping a user query to relevant data stream names.
+    Attempts LLM classification FIRST, with exponential backoff for 429 rate limits.
+    Falls back to keyword matching ONLY if the LLM call fails or returns malformed output.
     """
-    rule_result = fallback_keyword_router(message)
-    # If rules matched specific streams or general overview, return immediately to save LLM rate limits
-    if rule_result:
-        return rule_result
-
     try:
         from agent.graph import get_medxai_llm
         llm = get_medxai_llm()
@@ -106,7 +102,9 @@ async def classify_query_streams(message: str) -> List[str]:
                     raw = re.sub(r"```$", "", raw).strip()
                 parsed = json.loads(raw)
                 if isinstance(parsed, list):
-                    return [s for s in parsed if s in ALL_STREAMS]
+                    valid_streams = [s for s in parsed if s in ALL_STREAMS]
+                    print(f"[ROUTER] Source: llm | Streams: {valid_streams}")
+                    return valid_streams
                 break
             except Exception as err:
                 if "429" in str(err) and attempt < 2:
@@ -114,7 +112,9 @@ async def classify_query_streams(message: str) -> List[str]:
                 else:
                     raise err
 
-        return rule_result
     except Exception as e:
-        print(f"[ROUTER] LLM router failed ({e}), using keyword fallback")
-        return rule_result
+        print(f"[ROUTER] LLM router error ({e}), falling back to keyword router")
+
+    fallback_streams = fallback_keyword_router(message)
+    print(f"[ROUTER] Source: keyword_fallback | Streams: {fallback_streams}")
+    return fallback_streams
