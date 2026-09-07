@@ -809,21 +809,28 @@ async def run_agent_v2(message: str, user_id: str) -> tuple[str, Optional[dict[s
         raw_content = str(llm_res.content).strip() if llm_res else ""
         t_done = time.monotonic()
 
-        # Parse Fact -> Rationale -> Action JSON output
         facts, rationale, action, final_reply = [], "", "", raw_content
         try:
-            clean_raw = raw_content
-            if clean_raw.startswith("```"):
-                clean_raw = re.sub(r"^```(?:json)?", "", clean_raw, flags=re.IGNORECASE).strip()
-                clean_raw = re.sub(r"```$", "", clean_raw).strip()
-            
-            parsed_json = json.loads(clean_raw)
-            facts = parsed_json.get("facts", [])
-            rationale = parsed_json.get("rationale", "")
-            action = parsed_json.get("action", "")
-            final_reply = parsed_json.get("final_reply", raw_content)
-        except Exception:
-            print("[VERSION D LOG] LLM returned unstructured response or JSON parse failed, falling back to raw output.")
+            start_idx = raw_content.find("{")
+            end_idx = raw_content.rfind("}")
+            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                json_str = raw_content[start_idx:end_idx + 1]
+                parsed_json = json.loads(json_str)
+                facts = parsed_json.get("facts", [])
+                rationale = parsed_json.get("rationale", "")
+                action = parsed_json.get("action", "")
+                final_reply = str(parsed_json.get("final_reply", "")).strip()
+
+                if not final_reply:
+                    if rationale or action:
+                        final_reply = f"{rationale}\n- {action}\n- This is general health information, not medical advice."
+                    else:
+                        final_reply = raw_content
+            else:
+                final_reply = raw_content
+        except Exception as parse_err:
+            print(f"[VERSION D LOG] JSON parse exception ({parse_err}), falling back to raw output.")
+            final_reply = raw_content
 
         # 6. Evaluation Server-Side Logging
         print("\n==================== [VERSION D EVALUATION LOG] ====================")
