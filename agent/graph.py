@@ -1,6 +1,6 @@
 import asyncio
 import time
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_mistralai import ChatMistralAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
 from agent.tools import (
@@ -21,12 +21,13 @@ load_dotenv()
 SYSTEM_PROMPT = """You are MedXAI, an intelligent AI health assistant connected to a patient's smart ring data.
 
 You have 4 tools available:
-1. check_emergency — call this for health complaints or symptoms
+1. check_emergency — ALWAYS call this first for any health complaint or symptom
 2. get_patient_data — call this when the user asks about their personal health, biometrics, or ring data
 3. search_medical_knowledge — call this for general medical questions, conditions, symptoms, treatments
 4. analyze_symptoms — call this when the user lists multiple symptoms together
 
 Important rules:
+- Always call check_emergency first if the message mentions any physical symptom or complaint
 - Users may make spelling mistakes or typos — always interpret their intent charitably and respond helpfully. For example "dibeties" means "diabetes", "symtoms" means "symptoms", "herat" means "heart". Never reject a message due to spelling.
 - If a tool call fails and the user is asking a GENERAL medical question (e.g. "what causes a headache"), you may still answer from general medical knowledge.
 - If a tool call fails or no ring biometric data is found for the user, respond clearly: "Please connect your ring to view analysis." Never substitute a plausible-sounding number.
@@ -80,10 +81,9 @@ def get_medxai_agent():
     global _AGENT
     if _AGENT is None:
         t0 = time.monotonic()
-        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or ""
-        llm = ChatGoogleGenerativeAI(
-            google_api_key=api_key,
-            model="gemini-3.6-flash",
+        llm = ChatMistralAI(
+            api_key=os.getenv("MISTRAL_API_KEY"),
+            model="mistral-small-latest",
             temperature=0.1,
         )
         tools = [
@@ -613,10 +613,6 @@ async def get_cycle_card_data(user_id: str) -> Optional[dict[str, Any]]:
 async def run_agent(message: str, user_id: str) -> tuple[str, Optional[dict[str, Any]]]:
     try:
         t_start = time.monotonic()
-        # Fast-path emergency check in Python to save 1 full LLM roundtrip
-        emerg_res = check_emergency.invoke(message)
-        if "EMERGENCY DETECTED" in emerg_res:
-            return emerg_res, None
 
         agent = get_medxai_agent()
         t_agent_ready = time.monotonic()
@@ -634,17 +630,7 @@ async def run_agent(message: str, user_id: str) -> tuple[str, Optional[dict[str,
         # get last AI message
         for msg in reversed(result["messages"]):
             if hasattr(msg, "content") and msg.content and msg.type == "ai":
-                content = msg.content
-                if isinstance(content, list):
-                    parts = []
-                    for part in content:
-                        if isinstance(part, dict) and "text" in part:
-                            parts.append(part["text"])
-                        elif isinstance(part, str):
-                            parts.append(part)
-                    reply = "".join(parts) if parts else str(content)
-                else:
-                    reply = str(content)
+                reply = msg.content
                 break
 
         msg_lower = message.lower()
