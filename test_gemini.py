@@ -8,6 +8,6 @@ key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 print("API Key set:", bool(key))
 
 if key:
-    llm = ChatGoogleGenerativeAI(google_api_key=key, model="gemini-3.6-flash")
-    resp = llm.invoke("Hello, reply with 'Gemini 3.6 Flash is working!'")
+    llm = ChatGoogleGenerativeAI(google_api_key=key, model="gemini-1.5-flash")
+    resp = llm.invoke("Hello, reply with 'Gemini 1.5 Flash is working!'")
     print("Response:", resp.content)

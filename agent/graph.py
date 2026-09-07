@@ -81,10 +81,10 @@ def get_medxai_agent():
     global _AGENT
     if _AGENT is None:
         t0 = time.monotonic()
-        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("MISTRAL_API_KEY")
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("MISTRAL_API_KEY") or ""
         llm = ChatGoogleGenerativeAI(
             google_api_key=api_key,
-            model="gemini-3.6-flash",
+            model="gemini-1.5-flash",
             temperature=0.1,
         )
         tools = [
