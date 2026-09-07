@@ -75,17 +75,23 @@ No real-time heart rate reading is available right now.
 # every single request for no benefit, since none of it depends on per-request
 # state (message/user_id are only passed in at invoke time, not construction time).
 _AGENT = None
+_LLM = None
 
+def get_medxai_llm():
+    global _LLM
+    if _LLM is None:
+        _LLM = ChatMistralAI(
+            api_key=os.getenv("MISTRAL_API_KEY"),
+            model="mistral-small-latest",
+            temperature=0.1,
+        )
+    return _LLM
 
 def get_medxai_agent():
     global _AGENT
     if _AGENT is None:
         t0 = time.monotonic()
-        llm = ChatMistralAI(
-            api_key=os.getenv("MISTRAL_API_KEY"),
-            model="mistral-small-latest",
-            temperature=0.1,
-        )
+        llm = get_medxai_llm()
         tools = [
             check_emergency,
             get_patient_data,
@@ -614,65 +620,59 @@ async def run_agent(message: str, user_id: str) -> tuple[str, Optional[dict[str,
     try:
         t_start = time.monotonic()
 
-        agent = get_medxai_agent()
-        t_agent_ready = time.monotonic()
+        # 1. Fast-path emergency check in Python (0.001s, 0 LLM calls)
+        emerg_res = check_emergency.invoke(message)
+        if "EMERGENCY DETECTED" in emerg_res:
+            return emerg_res, None
 
-        full_message = f"{message}\n\n[user_id: {user_id}]"
-        result = await agent.ainvoke({
-            "messages": [
-                SystemMessage(content=SYSTEM_PROMPT),
-                HumanMessage(content=full_message)
-            ]
-        })
-        t_invoke_done = time.monotonic()
-
-        reply = "I was unable to generate a response. Please try again."
-        # get last AI message
-        for msg in reversed(result["messages"]):
-            if hasattr(msg, "content") and msg.content and msg.type == "ai":
-                reply = msg.content
-                break
-
+        # 2. Pre-fetch patient biometrics directly (0 LLM calls)
+        patient_data = await asyncio.to_thread(get_patient_data.invoke, user_id)
+        
+        # 3. Parallel card data lookup
         msg_lower = message.lower()
-        card = None
+        card_task = None
         if "sleep" in msg_lower:
-            card = await get_sleep_card_data(user_id)
+            card_task = get_sleep_card_data(user_id)
         elif any(k in msg_lower for k in ["blood pressure", "systolic", "diastolic"]) or re.search(r'\bbp\b', msg_lower):
-            card = await get_bp_card_data(user_id)
+            card_task = get_bp_card_data(user_id)
         elif any(k in msg_lower for k in ["spo2", "sp02", "blood oxygen", "oxygen level", "oxygen saturation"]):
-            card = await get_spo2_card_data(user_id)
+            card_task = get_spo2_card_data(user_id)
         elif any(k in msg_lower for k in ["hrv", "heart rate variability", "variability"]):
-            card = await get_hrv_card_data(user_id)
+            card_task = get_hrv_card_data(user_id)
         elif any(k in msg_lower for k in ["heart rate", "pulse", "bpm", "snore", "snoring"]):
-            card = await get_hr_card_data(user_id)
+            card_task = get_hr_card_data(user_id)
         elif any(k in msg_lower for k in ["steps", "walked", "walking", "step count"]):
-            card = await get_steps_card_data(user_id)
+            card_task = get_steps_card_data(user_id)
         elif any(k in msg_lower for k in ["temperature", "temp", "fever", "body temp", "body temperature"]):
-            card = await get_temperature_card_data(user_id)
+            card_task = get_temperature_card_data(user_id)
         elif any(k in msg_lower for k in ["stress", "stress level", "anxiety", "stressed"]):
-            card = await get_stress_card_data(user_id)
+            card_task = get_stress_card_data(user_id)
         elif any(k in msg_lower for k in ["period", "cycle", "menstrual", "menstruation", "ovulation", "pms", "fertile", "women health"]):
-            card = await get_cycle_card_data(user_id)
-        t_card_done = time.monotonic()
+            card_task = get_cycle_card_data(user_id)
 
-        # TEMP DEBUG — remove once the /chat latency source is confirmed.
-        # Breaks down where the total request time is actually going:
-        #  - "agent setup": only non-zero on the very first /chat call in this
-        #    container's lifetime (LLM client + tool schema binding); cached
-        #    after that, so this should read ~0.00s on every subsequent call.
-        #  - "agent.ainvoke (LLM tool-routing + reasoning)": the actual round
-        #    trip(s) to Mistral — deciding which tool(s) to call, waiting on
-        #    tool results, then generating the final reply. This is the one
-        #    to watch; if this number matches the overall slow request time,
-        #    the bottleneck is the LLM call itself, not our code.
-        #  - "card builder": should be near-instant (simple indexed DB reads).
-        print(
-            f"[TIMING] agent setup: {t_agent_ready - t_start:.2f}s | "
-            f"agent.ainvoke (LLM tool-routing + reasoning): {t_invoke_done - t_agent_ready:.2f}s | "
-            f"card builder: {t_card_done - t_invoke_done:.2f}s | "
-            f"TOTAL: {t_card_done - t_start:.2f}s"
-        )
+        # 4. Single direct LLM call with complete grounded context (1 LLM call total!)
+        llm = get_medxai_llm()
+        full_user_content = f"PATIENT DATA:\n{patient_data}\n\nUSER QUESTION:\n{message}"
+        
+        if card_task:
+            llm_res, card = await asyncio.gather(
+                llm.ainvoke([
+                    SystemMessage(content=SYSTEM_PROMPT),
+                    HumanMessage(content=full_user_content)
+                ]),
+                card_task
+            )
+        else:
+            llm_res = await llm.ainvoke([
+                SystemMessage(content=SYSTEM_PROMPT),
+                HumanMessage(content=full_user_content)
+            ])
+            card = None
 
+        t_done = time.monotonic()
+        reply = str(llm_res.content).strip()
+
+        print(f"[TIMING] 1-SHOT OPTIMIZED CHAT TOTAL: {t_done - t_start:.2f}s")
         return reply, card
     except Exception as e:
         return f"Agent error: {str(e)}", None
