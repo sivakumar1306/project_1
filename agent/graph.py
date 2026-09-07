@@ -84,7 +84,7 @@ def get_medxai_agent():
         api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("MISTRAL_API_KEY")
         llm = ChatGoogleGenerativeAI(
             google_api_key=api_key,
-            model="gemini-2.5-flash",
+            model="gemini-3.6-flash",
             temperature=0.1,
         )
         tools = [
