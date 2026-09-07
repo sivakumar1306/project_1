@@ -88,10 +88,10 @@ def get_medxai_llm():
             from langchain_groq import ChatGroq
             _LLM = ChatGroq(
                 groq_api_key=groq_key,
-                model_name="llama-3.3-70b-versatile",
+                model_name="openai/gpt-oss-120b",
                 temperature=0.1,
             )
-            print("[LLM PROVIDER] Initialized Groq (llama-3.3-70b-versatile)")
+            print("[LLM PROVIDER] Initialized Groq (openai/gpt-oss-120b)")
         elif mistral_key:
             _LLM = ChatMistralAI(
                 api_key=mistral_key,
