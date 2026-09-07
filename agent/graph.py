@@ -767,12 +767,23 @@ async def run_agent_v2(message: str, user_id: str) -> tuple[str, Optional[dict[s
         llm = get_medxai_llm()
         full_user_content = f"PATIENT DATA (Selective Streams: {streams}):\n{patient_data}\n\nUSER QUESTION:\n{message}"
 
-        llm_res = await llm.ainvoke([
-            SystemMessage(content=SYSTEM_PROMPT_V2_GROUNDED),
-            HumanMessage(content=full_user_content)
-        ])
+        llm_res = None
+        for attempt in range(3):
+            try:
+                llm_res = await llm.ainvoke([
+                    SystemMessage(content=SYSTEM_PROMPT_V2_GROUNDED),
+                    HumanMessage(content=full_user_content)
+                ])
+                break
+            except Exception as err:
+                if "429" in str(err) and attempt < 2:
+                    pause_time = 3.5 * (attempt + 1)
+                    print(f"[VERSION D LOG] Rate limited (429), pausing {pause_time:.1f}s before retry (attempt {attempt + 1})...")
+                    await asyncio.sleep(pause_time)
+                else:
+                    raise err
 
-        raw_content = str(llm_res.content).strip()
+        raw_content = str(llm_res.content).strip() if llm_res else ""
         t_done = time.monotonic()
 
         # Parse Fact -> Rationale -> Action JSON output

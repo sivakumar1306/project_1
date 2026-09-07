@@ -81,36 +81,47 @@ def fallback_keyword_router(message: str) -> List[str]:
 
 async def classify_query_streams(message: str) -> List[str]:
     """
-    LLM-based classifier mapping a user query to relevant data stream names.
-    Falls back to keyword matching if LLM fails.
+    Fast router mapping a user query to relevant data stream names.
+    Uses rule-based classification first, falling back to LLM with 429 retry backoff.
     """
+    rule_result = fallback_keyword_router(message)
+    # If rules matched specific streams or general overview, return immediately to save LLM rate limits
+    if rule_result:
+        return rule_result
+
     try:
         api_key = (os.getenv("MISTRAL_API_KEY") or "").strip()
         if not api_key:
-            return fallback_keyword_router(message)
+            return rule_result
 
         llm = ChatMistralAI(
             api_key=api_key,
             model="mistral-small-latest",
             temperature=0.0,
+            max_retries=3,
         )
-        res = await llm.ainvoke([
-            SystemMessage(content=ROUTER_SYSTEM_PROMPT),
-            HumanMessage(content=message)
-        ])
-        raw = res.content.strip()
-        
-        # Clean potential markdown code fences if present
-        if raw.startswith("```"):
-            raw = re.sub(r"^```(?:json)?", "", raw, flags=re.IGNORECASE).strip()
-            raw = re.sub(r"```$", "", raw).strip()
-            
-        parsed = json.loads(raw)
-        if isinstance(parsed, list):
-            valid_streams = [s for s in parsed if s in ALL_STREAMS]
-            return valid_streams
-        else:
-            return fallback_keyword_router(message)
+
+        for attempt in range(3):
+            try:
+                res = await llm.ainvoke([
+                    SystemMessage(content=ROUTER_SYSTEM_PROMPT),
+                    HumanMessage(content=message)
+                ])
+                raw = res.content.strip()
+                if raw.startswith("```"):
+                    raw = re.sub(r"^```(?:json)?", "", raw, flags=re.IGNORECASE).strip()
+                    raw = re.sub(r"```$", "", raw).strip()
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    return [s for s in parsed if s in ALL_STREAMS]
+                break
+            except Exception as err:
+                if "429" in str(err) and attempt < 2:
+                    await asyncio.sleep(1.5 * (attempt + 1))
+                else:
+                    raise err
+
+        return rule_result
     except Exception as e:
         print(f"[ROUTER] LLM router failed ({e}), using keyword fallback")
-        return fallback_keyword_router(message)
+        return rule_result

@@ -423,6 +423,7 @@ async def check_emergency_llm(message: str) -> tuple[bool, str, float]:
             api_key=api_key,
             model="mistral-small-latest",
             temperature=0.0,
+            max_retries=3,
         )
 
         sys_prompt = """You are a medical safety emergency triage classifier.
@@ -435,20 +436,30 @@ Output ONLY valid JSON matching this structure:
   "reason": "crushing chest pressure and arm numbness imply acute coronary event"
 }
 """
-        res = await llm.ainvoke([
-            SystemMessage(content=sys_prompt),
-            HumanMessage(content=message)
-        ])
-        raw = res.content.strip()
-        if raw.startswith("```"):
-            raw = re.sub(r"^```(?:json)?", "", raw, flags=re.IGNORECASE).strip()
-            raw = re.sub(r"```$", "", raw).strip()
+        import asyncio
+        for attempt in range(3):
+            try:
+                res = await llm.ainvoke([
+                    SystemMessage(content=sys_prompt),
+                    HumanMessage(content=message)
+                ])
+                raw = res.content.strip()
+                if raw.startswith("```"):
+                    raw = re.sub(r"^```(?:json)?", "", raw, flags=re.IGNORECASE).strip()
+                    raw = re.sub(r"```$", "", raw).strip()
 
-        parsed = json.loads(raw)
-        is_emerg = bool(parsed.get("is_emergency", False))
-        conf = float(parsed.get("confidence", 0.0))
-        reason = str(parsed.get("reason", ""))
-        return is_emerg, reason, conf
+                parsed = json.loads(raw)
+                is_emerg = bool(parsed.get("is_emergency", False))
+                conf = float(parsed.get("confidence", 0.0))
+                reason = str(parsed.get("reason", ""))
+                return is_emerg, reason, conf
+            except Exception as err:
+                if "429" in str(err) and attempt < 2:
+                    await asyncio.sleep(1.5 * (attempt + 1))
+                else:
+                    raise err
+
+        return False, "Emergency LLM check failed", 0.0
     except Exception as e:
         return False, f"LLM emergency check error: {e}", 0.0
 
