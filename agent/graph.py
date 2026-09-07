@@ -739,22 +739,29 @@ async def run_agent_v2(message: str, user_id: str) -> tuple[str, Optional[dict[s
         t_start = time.monotonic()
 
         # 1. Step 1 (Router) & Step 4 (Safety Fusion LLM Classifier) run IN PARALLEL
-        router_task = classify_query_streams(message)
-        safety_llm_task = check_emergency_llm(message)
+        router_task = asyncio.create_task(classify_query_streams(message))
+        safety_llm_task = asyncio.create_task(check_emergency_llm(message))
 
-        streams, llm_emerg_res = await asyncio.gather(router_task, safety_llm_task)
+        # Await safety LLM result first to allow instant emergency short-circuiting
+        llm_emerg_res = await safety_llm_task
+        t_safety_done = time.monotonic()
 
         # 2. Safety Fusion Gate (Keyword + LLM classifier)
         is_emergency, emerg_response, safety_meta = check_emergency_fused(message, llm_emerg_res)
         if is_emergency:
+            router_task.cancel() # Cancel unneeded router task immediately
             t_done = time.monotonic()
-            print(f"\n[VERSION D LOG] Total Latency: {t_done - t_start:.3f}s")
-            print(f"[VERSION D LOG] Router Selected Streams: {streams}")
+            print(f"\n[VERSION D LOG] Total Emergency Short-Circuit Latency: {t_done - t_start:.3f}s")
             print(f"[VERSION D LOG] Safety Fusion Fired: TRUE | Meta: {safety_meta}")
             print(f"[VERSION D LOG] Grounding: EMERGENCY TRIGGERED -> Short-circuit")
             return emerg_response, None
 
+        # If not an emergency, await router task result
+        streams = await router_task
+        t_router_done = time.monotonic()
+
         # 3. Selective Fetch: fetch only tables matching router streams
+        t_fetch_start = time.monotonic()
         patient_data_task = asyncio.to_thread(get_patient_data_selective, user_id, streams)
 
         # 4. Parallel Card Data Lookup
@@ -785,8 +792,10 @@ async def run_agent_v2(message: str, user_id: str) -> tuple[str, Optional[dict[s
         else:
             patient_data = await patient_data_task
             card = None
+        t_fetch_done = time.monotonic()
 
         # 5. Grounded Fact -> Rationale -> Action LLM Generation
+        t_llm_start = time.monotonic()
         llm = get_medxai_llm()
         full_user_content = f"PATIENT DATA (Selective Streams: {streams}):\n{patient_data}\n\nUSER QUESTION:\n{message}"
 
@@ -806,6 +815,7 @@ async def run_agent_v2(message: str, user_id: str) -> tuple[str, Optional[dict[s
                 else:
                     raise err
 
+        t_llm_done = time.monotonic()
         raw_content = str(llm_res.content).strip() if llm_res else ""
         t_done = time.monotonic()
 
@@ -832,9 +842,14 @@ async def run_agent_v2(message: str, user_id: str) -> tuple[str, Optional[dict[s
             print(f"[VERSION D LOG] JSON parse exception ({parse_err}), falling back to raw output.")
             final_reply = raw_content
 
-        # 6. Evaluation Server-Side Logging
+        # 6. Evaluation Server-Side Logging with per-stage timing
         print("\n==================== [VERSION D EVALUATION LOG] ====================")
-        print(f"Total Execution Latency: {t_done - t_start:.3f} seconds")
+        print("--- PER-STAGE TIMING BREAKDOWN ---")
+        print(f"1. Stage 1 (Router + Safety LLM Stage): {t_router_done - t_start:.3f} seconds")
+        print(f"2. Stage 2 (Supabase Selective Fetch):  {t_fetch_done - t_fetch_start:.3f} seconds")
+        print(f"3. Stage 3 (Final LLM Generation):      {t_llm_done - t_llm_start:.3f} seconds")
+        print(f"TOTAL PIPELINE EXECUTION LATENCY:      {t_done - t_start:.3f} seconds")
+        print("-------------------------------------------------------------------")
         print(f"Router Selected Streams: {streams}")
         print(f"Safety Fusion Signals:   Keyword={safety_meta['keyword_triggered']} | LLM={safety_meta['llm_triggered']} (Conf={safety_meta['llm_confidence']:.2f})")
         print("--- FACT -> RATIONALE -> ACTION BREAKDOWN ---")
@@ -847,4 +862,48 @@ async def run_agent_v2(message: str, user_id: str) -> tuple[str, Optional[dict[s
 
         return final_reply, card
     except Exception as e:
-        return f"Version D Agent error: {str(e)}", None
+        return f"Version D Agent error: {str(e)}", None
+
+
+# ── Version A Architecture (Plain LLM, No Tools, No Data) ───────────────────
+
+async def run_agent_a(message: str, user_id: str) -> tuple[str, Optional[dict[str, Any]]]:
+    """
+    Version A — Plain LLM, no tools, no data.
+    Raw LLM call with minimal system prompt and user message.
+    """
+    try:
+        llm = get_medxai_llm()
+        llm_res = await llm.ainvoke([
+            SystemMessage(content="You are a helpful health assistant."),
+            HumanMessage(content=message)
+        ])
+        reply = str(llm_res.content).strip()
+        return reply, None
+    except Exception as e:
+        return f"Version A Agent error: {str(e)}", None
+
+
+# ── Version B Architecture (Plain RAG, No Biometric Routing) ────────────────
+
+async def run_agent_b(message: str, user_id: str) -> tuple[str, Optional[dict[str, Any]]]:
+    """
+    Version B — Plain RAG, no biometric routing.
+    Retrieves medical knowledge context via search_medical_knowledge tool,
+    then passes context + message to LLM with simple system prompt.
+    """
+    try:
+        rag_context = await search_medical_knowledge.ainvoke(message)
+        system_prompt = "You are a helpful health assistant. Answer the user's question using the provided medical knowledge context."
+        full_user_content = f"MEDICAL KNOWLEDGE CONTEXT:\n{rag_context}\n\nUSER QUESTION:\n{message}"
+
+        llm = get_medxai_llm()
+        llm_res = await llm.ainvoke([
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=full_user_content)
+        ])
+        reply = str(llm_res.content).strip()
+        return reply, None
+    except Exception as e:
+        return f"Version B Agent error: {str(e)}", None
+

@@ -473,10 +473,23 @@ def check_emergency_fused(message: str, llm_res: tuple[bool, str, float]) -> tup
     is_llm_emerg, llm_reason, llm_conf = llm_res
     llm_triggered = is_llm_emerg and llm_conf >= 0.7
 
-    is_emergency = bool(triggered_kw) or llm_triggered
+    # Disagreement override check:
+    # If keyword matched BUT LLM confidently disagrees (is_llm_emerg is False and llm_conf >= 0.85),
+    # treat keyword match as false positive (e.g. informational query "What are the symptoms of a stroke?")
+    keyword_overridden = False
+    if triggered_kw and (not is_llm_emerg) and (llm_conf >= 0.85):
+        keyword_overridden = True
+        print(f"[SAFETY] Keyword match overridden — LLM confidently classified as non-emergency (conf={llm_conf:.2f})")
+        effective_kw_triggered = []
+    else:
+        effective_kw_triggered = triggered_kw
+
+    is_emergency = bool(effective_kw_triggered) or llm_triggered
 
     meta = {
         "keyword_triggered": triggered_kw,
+        "effective_keyword_triggered": effective_kw_triggered,
+        "keyword_overridden": keyword_overridden,
         "llm_triggered": llm_triggered,
         "llm_reason": llm_reason,
         "llm_confidence": llm_conf
@@ -484,8 +497,8 @@ def check_emergency_fused(message: str, llm_res: tuple[bool, str, float]) -> tup
 
     if is_emergency:
         triggers = []
-        if triggered_kw:
-            triggers.append(", ".join(triggered_kw))
+        if effective_kw_triggered:
+            triggers.append(", ".join(effective_kw_triggered))
         if llm_triggered:
             triggers.append(llm_reason)
         desc = "; ".join(triggers)
