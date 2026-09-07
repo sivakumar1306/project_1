@@ -1,6 +1,6 @@
 import asyncio
 import time
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_mistralai import ChatMistralAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
 from agent.tools import (
@@ -81,10 +81,9 @@ def get_medxai_agent():
     global _AGENT
     if _AGENT is None:
         t0 = time.monotonic()
-        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("MISTRAL_API_KEY") or ""
-        llm = ChatGoogleGenerativeAI(
-            google_api_key=api_key,
-            model="gemini-3.6-flash",
+        llm = ChatMistralAI(
+            api_key=os.getenv("MISTRAL_API_KEY"),
+            model="mistral-small-latest",
             temperature=0.1,
         )
         tools = [
