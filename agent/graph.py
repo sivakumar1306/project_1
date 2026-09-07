@@ -80,8 +80,9 @@ _LLM = None
 def get_medxai_llm():
     global _LLM
     if _LLM is None:
+        key = (os.getenv("MISTRAL_API_KEY") or "").strip()
         _LLM = ChatMistralAI(
-            api_key=os.getenv("MISTRAL_API_KEY"),
+            api_key=key,
             model="mistral-small-latest",
             temperature=0.1,
         )
@@ -676,3 +677,133 @@ async def run_agent(message: str, user_id: str) -> tuple[str, Optional[dict[str,
         return reply, card
     except Exception as e:
         return f"Agent error: {str(e)}", None
+
+
+# ── Version D Architecture (Router + Grounding + Safety Fusion) ─────────────
+
+SYSTEM_PROMPT_V2_GROUNDED = SYSTEM_PROMPT + """
+
+IMPORTANT ADDITION FOR VERSION D GROUNDING:
+You must perform explicit internal reasoning in three stages (FACTS -> RATIONALE -> ACTION) before outputting the final reply.
+Output ONLY a valid JSON object matching this exact schema:
+
+{
+  "facts": [
+    "List numeric values, dates, or clinical facts verbatim present in PATIENT DATA (or state no data available)"
+  ],
+  "rationale": "Explicit clinical reasoning connecting the facts to the user's question",
+  "action": "Recommended guidance/next steps for the user",
+  "final_reply": "The exact user-facing final reply following the mandatory RESPONSE FORMAT bullet points above"
+}
+
+Do NOT wrap the JSON in markdown code blocks if possible. Ensure final_reply strictly follows all response format rules (plain text, hyphens, max 4 bullets, no markdown, ending with mandatory disclaimer bullet).
+"""
+
+async def run_agent_v2(message: str, user_id: str) -> tuple[str, Optional[dict[str, Any]]]:
+    """
+    Version D Orchestration Pipeline:
+    1. Parallel Query Router + LLM Safety Fusion (asyncio.gather)
+    2. Emergency Safety Fusion Gate
+    3. Selective Data Fetching (get_patient_data_selective)
+    4. Fact -> Rationale -> Action Grounded LLM Response
+    5. Server-side Evaluation Logging
+    """
+    import json
+    from agent.router import classify_query_streams
+    from agent.tools import check_emergency_llm, check_emergency_fused, get_patient_data_selective
+
+    try:
+        t_start = time.monotonic()
+
+        # 1. Step 1 (Router) & Step 4 (Safety Fusion LLM Classifier) run IN PARALLEL
+        router_task = classify_query_streams(message)
+        safety_llm_task = check_emergency_llm(message)
+
+        streams, llm_emerg_res = await asyncio.gather(router_task, safety_llm_task)
+
+        # 2. Safety Fusion Gate (Keyword + LLM classifier)
+        is_emergency, emerg_response, safety_meta = check_emergency_fused(message, llm_emerg_res)
+        if is_emergency:
+            t_done = time.monotonic()
+            print(f"\n[VERSION D LOG] Total Latency: {t_done - t_start:.3f}s")
+            print(f"[VERSION D LOG] Router Selected Streams: {streams}")
+            print(f"[VERSION D LOG] Safety Fusion Fired: TRUE | Meta: {safety_meta}")
+            print(f"[VERSION D LOG] Grounding: EMERGENCY TRIGGERED -> Short-circuit")
+            return emerg_response, None
+
+        # 3. Selective Fetch: fetch only tables matching router streams
+        patient_data_task = asyncio.to_thread(get_patient_data_selective, user_id, streams)
+
+        # 4. Parallel Card Data Lookup
+        msg_lower = message.lower()
+        card_task = None
+        if "sleep" in streams or "sleep" in msg_lower:
+            card_task = get_sleep_card_data(user_id)
+        elif "bp" in streams or any(k in msg_lower for k in ["blood pressure", "systolic", "diastolic"]) or re.search(r'\bbp\b', msg_lower):
+            card_task = get_bp_card_data(user_id)
+        elif "spo2" in streams or any(k in msg_lower for k in ["spo2", "sp02", "blood oxygen"]):
+            card_task = get_spo2_card_data(user_id)
+        elif "hrv" in streams or any(k in msg_lower for k in ["hrv", "variability"]):
+            card_task = get_hrv_card_data(user_id)
+        elif ("current_hr" in streams or "hr_history" in streams) or any(k in msg_lower for k in ["heart rate", "pulse", "bpm"]):
+            card_task = get_hr_card_data(user_id)
+        elif "steps" in streams or any(k in msg_lower for k in ["steps", "walked"]):
+            card_task = get_steps_card_data(user_id)
+        elif "temperature" in streams or any(k in msg_lower for k in ["temperature", "temp", "fever"]):
+            card_task = get_temperature_card_data(user_id)
+        elif "stress" in streams or any(k in msg_lower for k in ["stress", "anxiety"]):
+            card_task = get_stress_card_data(user_id)
+        elif "cycles" in streams or any(k in msg_lower for k in ["period", "cycle", "menstrual"]):
+            card_task = get_cycle_card_data(user_id)
+
+        # Execute selective fetch + card query concurrently
+        if card_task:
+            patient_data, card = await asyncio.gather(patient_data_task, card_task)
+        else:
+            patient_data = await patient_data_task
+            card = None
+
+        # 5. Grounded Fact -> Rationale -> Action LLM Generation
+        llm = get_medxai_llm()
+        full_user_content = f"PATIENT DATA (Selective Streams: {streams}):\n{patient_data}\n\nUSER QUESTION:\n{message}"
+
+        llm_res = await llm.ainvoke([
+            SystemMessage(content=SYSTEM_PROMPT_V2_GROUNDED),
+            HumanMessage(content=full_user_content)
+        ])
+
+        raw_content = str(llm_res.content).strip()
+        t_done = time.monotonic()
+
+        # Parse Fact -> Rationale -> Action JSON output
+        facts, rationale, action, final_reply = [], "", "", raw_content
+        try:
+            clean_raw = raw_content
+            if clean_raw.startswith("```"):
+                clean_raw = re.sub(r"^```(?:json)?", "", clean_raw, flags=re.IGNORECASE).strip()
+                clean_raw = re.sub(r"```$", "", clean_raw).strip()
+            
+            parsed_json = json.loads(clean_raw)
+            facts = parsed_json.get("facts", [])
+            rationale = parsed_json.get("rationale", "")
+            action = parsed_json.get("action", "")
+            final_reply = parsed_json.get("final_reply", raw_content)
+        except Exception:
+            print("[VERSION D LOG] LLM returned unstructured response or JSON parse failed, falling back to raw output.")
+
+        # 6. Evaluation Server-Side Logging
+        print("\n==================== [VERSION D EVALUATION LOG] ====================")
+        print(f"Total Execution Latency: {t_done - t_start:.3f} seconds")
+        print(f"Router Selected Streams: {streams}")
+        print(f"Safety Fusion Signals:   Keyword={safety_meta['keyword_triggered']} | LLM={safety_meta['llm_triggered']} (Conf={safety_meta['llm_confidence']:.2f})")
+        print("--- FACT -> RATIONALE -> ACTION BREAKDOWN ---")
+        print(f"FACTS:     {facts}")
+        print(f"RATIONALE: {rationale}")
+        print(f"ACTION:    {action}")
+        print("-------------------------------------------------------------------")
+        print(f"FINAL USER REPLY:\n{final_reply}")
+        print("====================================================================\n")
+
+        return final_reply, card
+    except Exception as e:
+        return f"Version D Agent error: {str(e)}", None

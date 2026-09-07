@@ -212,6 +212,180 @@ PATIENT PROFILE:
         print(f"[get_patient_data] ERROR for user_id={user_id}: {error_msg}")
         return error_msg
 
+def get_patient_data_selective(user_id: str, streams: list[str]) -> str:
+    """Get ONLY requested biometric data streams for a patient. Used for selective fetching in Version D."""
+    try:
+        user_id = user_id.strip().strip('"').strip("'")
+        if not streams:
+            return "No personal biometric data requested for this general inquiry."
+
+        context = ""
+        from concurrent.futures import ThreadPoolExecutor
+
+        def _fetch_profile():
+            try:
+                return supabase.table("user_profiles").select("*").eq("id", user_id).maybe_single().execute()
+            except Exception:
+                return None
+
+        def _fetch_curr_hr():
+            try:
+                return supabase.table("user_hr_readings").select("*").eq("user_id", user_id).neq("source", "demo_seed").order("measured_at", desc=True).limit(1).execute()
+            except Exception:
+                return None
+
+        def _fetch_table(table, order_col="date", limit=3):
+            try:
+                r = supabase.table(table).select("*").eq("user_id", user_id).order(order_col, desc=True).limit(limit).execute()
+                return r.data or []
+            except Exception:
+                return []
+
+        futures = {}
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            if "profile" in streams:
+                futures["profile"] = executor.submit(_fetch_profile)
+            if "current_hr" in streams:
+                futures["current_hr"] = executor.submit(_fetch_curr_hr)
+            if "sleep" in streams:
+                futures["sleep"] = executor.submit(_fetch_table, "user_sleep", "date", 3)
+            if "hr_history" in streams:
+                futures["hr"] = executor.submit(_fetch_table, "user_hr", "date", 3)
+            if "hrv" in streams:
+                futures["hrv"] = executor.submit(_fetch_table, "user_hrv", "date", 3)
+            if "spo2" in streams:
+                futures["spo2"] = executor.submit(_fetch_table, "user_spo2", "date", 3)
+            if "steps" in streams:
+                futures["steps"] = executor.submit(_fetch_table, "user_steps", "date", 3)
+            if "bp" in streams:
+                futures["bp"] = executor.submit(_fetch_table, "user_bp", "measured_at", 1)
+            if "temperature" in streams:
+                futures["temp"] = executor.submit(_fetch_table, "user_temp", "measured_at", 1)
+            if "stress" in streams:
+                futures["stress"] = executor.submit(_fetch_table, "user_stress", "measured_at", 3)
+            if "cycles" in streams:
+                futures["cycles"] = executor.submit(_fetch_table, "user_cycles", "period_start", 2)
+
+            results = {k: f.result() for k, f in futures.items()}
+
+        profile = results.get("profile")
+        if profile and profile.data:
+            p = profile.data
+            context += f"""
+PATIENT PROFILE:
+- Name: {p.get('full_name', 'unknown')}
+- Age: {p.get('age', 'unknown')}
+- Gender: {p.get('gender', 'unknown')}
+- Height: {p.get('height_cm', 'unknown')} cm
+- Weight: {p.get('weight_kg', 'unknown')} kg
+"""
+
+        current_hr = results.get("current_hr")
+        if "current_hr" in streams:
+            if current_hr and current_hr.data:
+                c = current_hr.data[0]
+                measured_at_str = c.get("measured_at")
+                staleness_note = ""
+                try:
+                    measured_dt = datetime.fromisoformat(measured_at_str.replace("Z", "+00:00"))
+                    age_hours = (datetime.now(timezone.utc) - measured_dt).total_seconds() / 3600
+                    if age_hours > 3:
+                        staleness_note = f" [STALE: this reading is {age_hours:.1f} hours old, NOT real-time]"
+                except Exception:
+                    pass
+                measured_at_local = _to_ist(measured_at_str)
+                context += f"\nCURRENT HEART RATE (most recent single reading in DB): {c.get('value_bpm')} bpm, measured at {measured_at_local}{staleness_note}\n"
+            else:
+                context += "\nCURRENT HEART RATE: NO reading found in database for this user.\n"
+
+        sleep = results.get("sleep")
+        if sleep:
+            context += "\nRECENT SLEEP:\n"
+            for day in reversed(sleep):
+                total_min = day.get("total_duration") or 0
+                context += f"- {day.get('date')}: {total_min // 60}h {total_min % 60}m, score {day.get('sleep_score')}/100\n"
+
+        hr = results.get("hr")
+        if hr:
+            context += "\nHISTORICAL DAILY HEART RATE (NOT the current/live reading):\n"
+            for day in reversed(hr):
+                context += f"- {day.get('date')}: avg {day.get('avg_hr')} bpm (min {day.get('min_hr')}, max {day.get('max_hr')})\n"
+
+        hrv = results.get("hrv")
+        if hrv:
+            context += "\nRECENT HRV:\n"
+            for day in reversed(hrv):
+                context += f"- {day.get('date')}: avg {day.get('avg_hrv')} ms\n"
+
+        spo2 = results.get("spo2")
+        if spo2:
+            context += "\nRECENT SPO2:\n"
+            for day in reversed(spo2):
+                context += f"- {day.get('date')}: avg {day.get('avg_spo2')}%\n"
+
+        steps = results.get("steps")
+        if steps:
+            context += "\nRECENT STEPS:\n"
+            for day in reversed(steps):
+                context += f"- {day.get('date')}: {day.get('steps')} steps, {day.get('calories')} kcal\n"
+
+        bp = results.get("bp")
+        if bp:
+            b = bp[0]
+            context += f"\nLATEST BLOOD PRESSURE: {b.get('systolic')}/{b.get('diastolic')} (measured {_to_ist(b.get('measured_at'))})\n"
+
+        temp = results.get("temp")
+        if "temperature" in streams:
+            if temp:
+                t = temp[0]
+                context += f"\nLATEST TEMPERATURE: {t.get('value_c')} °C (measured {_to_ist(t.get('measured_at'))})\n"
+            else:
+                context += "\nLATEST TEMPERATURE: NO reading found in database for this user.\n"
+
+        stress = results.get("stress")
+        if "stress" in streams:
+            if stress:
+                context += "\nRECENT STRESS LEVEL:\n"
+                for s in reversed(stress):
+                    lbl = f" ({s.get('label')})" if s.get('label') else ""
+                    context += f"- {_to_ist(s.get('measured_at'))}: level {s.get('stress_value')}{lbl}\n"
+            else:
+                context += "\nRECENT STRESS LEVEL: NO reading found in database for this user.\n"
+
+        cycles = results.get("cycles")
+        if cycles:
+            context += "\nMENSTRUAL CYCLE LOGS:\n"
+            for cy in reversed(cycles):
+                p_start = cy.get("period_start") or "unknown"
+                p_end = cy.get("period_end") or "ongoing"
+                c_len = cy.get("cycle_length") or 28
+                p_len = cy.get("period_length") or 5
+                est_next_str = "unknown"
+                days_until = "unknown"
+                curr_day_str = "unknown"
+                if p_start != "unknown":
+                    try:
+                        p_start_dt = datetime.strptime(p_start, "%Y-%m-%d")
+                        today = datetime.utcnow().date()
+                        delta_days = (today - p_start_dt.date()).days
+                        if delta_days >= 0:
+                            curr_day = (delta_days % c_len) + 1
+                            days_until = c_len - (delta_days % c_len)
+                            next_dt = today + timedelta(days=days_until)
+                            est_next_str = next_dt.strftime("%d %B %Y")
+                            curr_day_str = f"Day {curr_day}"
+                    except Exception:
+                        pass
+                context += f"- Period start: {p_start}, period end: {p_end}, cycle length: {c_len} days, period length: {p_len} days. Currently at {curr_day_str}. Estimated next period: {est_next_str} (in {days_until} days).\n"
+
+        result = context.strip() if context else "No biometric or ring data found for the requested streams."
+        print(f"[get_patient_data_selective] user_id={user_id}, streams={streams}")
+        return result
+    except Exception as e:
+        error_msg = f"Failed to fetch selective patient data: {str(e)}"
+        print(f"[get_patient_data_selective] ERROR for user_id={user_id}: {error_msg}")
+        return error_msg
+
 @tool
 def check_emergency(message: str) -> str:
     """Check if the message contains emergency or life-threatening symptoms that require immediate medical attention."""
@@ -227,6 +401,95 @@ def check_emergency(message: str) -> str:
     if triggered:
         return f"EMERGENCY DETECTED: {', '.join(triggered)}. This requires IMMEDIATE medical attention. Call emergency services (112 in India) or go to the nearest emergency room NOW. Do not wait."
     return "No emergency detected."
+
+async def check_emergency_llm(message: str) -> tuple[bool, str, float]:
+    """
+    Fast LLM emergency classification evaluating whether a message describes or implies
+    a potential medical emergency (including non-obvious/paraphrased phrasing).
+    Returns (is_emergency, reason, confidence).
+    """
+    import os
+    import json
+    import re
+    from langchain_mistralai import ChatMistralAI
+    from langchain_core.messages import SystemMessage, HumanMessage
+
+    try:
+        api_key = (os.getenv("MISTRAL_API_KEY") or "").strip()
+        if not api_key:
+            return False, "No API key available", 0.0
+
+        llm = ChatMistralAI(
+            api_key=api_key,
+            model="mistral-small-latest",
+            temperature=0.0,
+        )
+
+        sys_prompt = """You are a medical safety emergency triage classifier.
+Evaluate if the user message describes or implies a potential medical emergency (such as heart attack, stroke, severe respiratory distress, acute anaphylaxis, severe head injury, uncontrollable bleeding, or self-harm).
+
+Output ONLY valid JSON matching this structure:
+{
+  "is_emergency": true,
+  "confidence": 0.95,
+  "reason": "crushing chest pressure and arm numbness imply acute coronary event"
+}
+"""
+        res = await llm.ainvoke([
+            SystemMessage(content=sys_prompt),
+            HumanMessage(content=message)
+        ])
+        raw = res.content.strip()
+        if raw.startswith("```"):
+            raw = re.sub(r"^```(?:json)?", "", raw, flags=re.IGNORECASE).strip()
+            raw = re.sub(r"```$", "", raw).strip()
+
+        parsed = json.loads(raw)
+        is_emerg = bool(parsed.get("is_emergency", False))
+        conf = float(parsed.get("confidence", 0.0))
+        reason = str(parsed.get("reason", ""))
+        return is_emerg, reason, conf
+    except Exception as e:
+        return False, f"LLM emergency check error: {e}", 0.0
+
+def check_emergency_fused(message: str, llm_res: tuple[bool, str, float]) -> tuple[bool, str, dict]:
+    """
+    Fused safety classification combining deterministic keyword matching with LLM classification.
+    Returns (is_emergency: bool, response_text: str, metadata: dict).
+    """
+    emergency_keywords = [
+        "chest pain", "can't breathe", "cannot breathe", "difficulty breathing",
+        "heart attack", "stroke", "unconscious", "unresponsive", "seizure",
+        "severe bleeding", "overdose", "suicidal", "suicide", "kill myself",
+        "severe headache", "sudden confusion", "face drooping", "arm weakness",
+        "slurred speech", "severe allergic", "anaphylaxis", "stopped breathing"
+    ]
+    msg_lower = message.lower()
+    triggered_kw = [kw for kw in emergency_keywords if kw in msg_lower]
+
+    is_llm_emerg, llm_reason, llm_conf = llm_res
+    llm_triggered = is_llm_emerg and llm_conf >= 0.7
+
+    is_emergency = bool(triggered_kw) or llm_triggered
+
+    meta = {
+        "keyword_triggered": triggered_kw,
+        "llm_triggered": llm_triggered,
+        "llm_reason": llm_reason,
+        "llm_confidence": llm_conf
+    }
+
+    if is_emergency:
+        triggers = []
+        if triggered_kw:
+            triggers.append(", ".join(triggered_kw))
+        if llm_triggered:
+            triggers.append(llm_reason)
+        desc = "; ".join(triggers)
+        response_msg = f"EMERGENCY DETECTED: {desc}. This requires IMMEDIATE medical attention. Call emergency services (112 in India) or go to the nearest emergency room NOW. Do not wait."
+        return True, response_msg, meta
+
+    return False, "No emergency detected.", meta
 
 @tool
 def analyze_symptoms(symptoms: str) -> str:
