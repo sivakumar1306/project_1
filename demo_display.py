@@ -1,5 +1,7 @@
 import asyncio
 import os
+import re
+import shutil
 import sys
 import textwrap
 from dotenv import load_dotenv
@@ -18,7 +20,6 @@ from agent.graph import run_agent_v2
 TEST_USER_ID = "00000000-0000-0000-0000-000000000000"
 TOTAL_BASELINE_STREAMS = 11
 
-# Terminal ANSI Color Helper (degrades gracefully if colorama or ANSI is unsupported)
 USE_COLOR = True
 try:
     import colorama
@@ -43,6 +44,18 @@ def clr(text: str, code: str) -> str:
     }
     return f"{codes.get(code, '')}{text}{codes['reset']}"
 
+def _visible_len(s: str) -> int:
+    return len(re.sub(r'\033\[[0-9;]*m', '', s))
+
+def get_safe_width(default: int = 74) -> int:
+    try:
+        cols = shutil.get_terminal_size().columns
+        if cols > 10:
+            return min(cols - 2, default)
+    except Exception:
+        pass
+    return default
+
 def print_header(title: str, width: int = 74):
     top = "=" * width
     padded = title.center(width - 4)
@@ -53,7 +66,7 @@ def print_header(title: str, width: int = 74):
     print(clr(bottom, "cyan") + "\n")
 
 def print_box(step_title: str, lines: list[str], width: int = 74, border_color: str = "cyan"):
-    # Header line with title embedded
+    content_width = max(10, width - 4)
     title_text = f"- [ {step_title} ] "
     fill_len = max(0, width - len(title_text) - 1)
     top_line = "+" + title_text + "-" * fill_len + "+"
@@ -61,11 +74,31 @@ def print_box(step_title: str, lines: list[str], width: int = 74, border_color: 
 
     print(clr(top_line, border_color))
     for line in lines:
-        # Wrap content to fit inside border safely
-        content_width = width - 4
-        wrapped_sublines = textwrap.wrap(line, width=content_width) or [""]
+        if not line.strip():
+            space = " " * content_width
+            print(f"{clr('|', border_color)} {space} {clr('|', border_color)}")
+            continue
+
+        initial_indent = ""
+        subsequent_indent = ""
+        if line.strip().startswith("- "):
+            indent_pos = line.find("- ")
+            initial_indent = line[:indent_pos]
+            subsequent_indent = initial_indent + "  "
+
+        wrapped_sublines = textwrap.wrap(
+            line,
+            width=content_width,
+            initial_indent=initial_indent,
+            subsequent_indent=subsequent_indent,
+            break_long_words=True,
+            replace_whitespace=False
+        ) or [""]
+
         for subline in wrapped_sublines:
-            space = " " * (content_width - len(subline))
+            vis_len = _visible_len(subline)
+            space_count = max(0, content_width - vis_len)
+            space = " " * space_count
             print(f"{clr('|', border_color)} {subline}{space} {clr('|', border_color)}")
     print(clr(bottom_line, border_color))
 
@@ -171,7 +204,8 @@ def format_demo_output(query: str, reply: str, card: dict, meta: dict, width: in
         print_box("FLUTTER UI CARD ATTACHMENT", card_lines, width=width, border_color="magenta")
 
 async def main():
-    print_header("MEDXAI - LIVE QUERY ANALYSIS DEMO")
+    box_width = get_safe_width(74)
+    print_header("MEDXAI - LIVE QUERY ANALYSIS DEMO", width=box_width)
     print(clr("  This interactive demo showcases the Version D Architecture:", "dim"))
     print(clr("  * Parallel Query Router & Safety Fusion Gate", "dim"))
     print(clr("  * Selective Biometric Stream Fetching (Data Reduction)", "dim"))
@@ -191,8 +225,8 @@ async def main():
             
             q_str = f'"{user_input}"'
             print(f"\nQuery: {clr(q_str, 'bold')}\n")
-            format_demo_output(user_input, reply, card, meta)
-            print("\n" + "=" * 74 + "\n")
+            format_demo_output(user_input, reply, card, meta, width=box_width)
+            print("\n" + "=" * box_width + "\n")
 
         except KeyboardInterrupt:
             print(clr("\nExiting.", "dim"))
