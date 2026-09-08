@@ -71,7 +71,7 @@ def get_patient_data(user_id: str) -> str:
 
         def _fetch_curr_hr():
             try:
-                return supabase.table("user_hr_readings").select("*").eq("user_id", user_id).neq("source", "demo_seed").order("measured_at", desc=True).limit(1).execute()
+                return supabase.table("user_hr_readings").select("*").eq("user_id", user_id).order("measured_at", desc=True).limit(1).execute()
             except Exception:
                 return None
 
