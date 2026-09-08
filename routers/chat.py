@@ -2,7 +2,7 @@ import asyncio
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
-from agent.graph import run_agent
+from agent.graph import run_agent_v2
 from db.supabase import supabase
 from typing import Optional, Any
 
@@ -28,7 +28,7 @@ class ChatResponse(BaseModel):
 async def chat(request: ChatRequest):
     try:
         print(f"[MedXAI] user: {request.user_id} | message: {request.message[:60]}")
-        reply, card = await run_agent(request.message, request.user_id)
+        reply, card = await run_agent_v2(request.message, request.user_id)
 
         # save to conversation history
         conversation_id = request.conversation_id
