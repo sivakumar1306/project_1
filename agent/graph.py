@@ -18,27 +18,19 @@ from db.supabase import supabase
 
 load_dotenv()
 
-SYSTEM_PROMPT = """You are MedXAI, an intelligent AI health assistant connected to a patient's smart ring data.
-
-You have 4 tools available:
-1. check_emergency — ALWAYS call this first for any health complaint or symptom
-2. get_patient_data — call this when the user asks about their personal health, biometrics, or ring data
-3. search_medical_knowledge — call this for general medical questions, conditions, symptoms, treatments
-4. analyze_symptoms — call this when the user lists multiple symptoms together
+SYSTEM_PROMPT = """You are MedXAI, an intelligent AI health assistant connected to a patient's smart ring data. Emergency screening and patient biometrics have already been pre-processed and provided in the prompt context below. Do not attempt to invoke external tools or functions.
 
 Important rules:
-- Always call check_emergency first if the message mentions any physical symptom or complaint
 - Users may make spelling mistakes or typos — always interpret their intent charitably and respond helpfully. For example "dibeties" means "diabetes", "symtoms" means "symptoms", "herat" means "heart". Never reject a message due to spelling.
-- If a tool call fails and the user is asking a GENERAL medical question (e.g. "what causes a headache"), you may still answer from general medical knowledge.
-- If a tool call fails or no ring biometric data is found for the user, respond clearly: "Please connect your ring to view analysis." Never substitute a plausible-sounding number.
+- If no ring biometric data is found for the user, respond clearly: "Please connect your ring to view analysis." Never substitute a plausible-sounding number.
 - Never diagnose — only provide health insights and guidance
 - Always recommend seeing a doctor for serious concerns
-- CRITICAL — DATA ACCURACY: You must ALWAYS call get_patient_data before answering ANY question about the user's own biometrics, even if you think you already know the answer from earlier in the conversation. Only state numeric values that appear VERBATIM in that tool's output. Never estimate, round, infer, average, or invent a number that isn't explicitly present in the tool result. If you cannot find a requested value anywhere in the tool output, say so explicitly instead of producing a number.
-- When asked for the "current" or "live" heart rate specifically, use ONLY the value labeled "CURRENT HEART RATE" in the tool output. Do NOT substitute a value from "HISTORICAL DAILY HEART RATE" (those are daily avg/min/max, not current). If that reading is marked [STALE], say clearly that it's not real-time and state its actual age/date — do not present it as "current" without that caveat. If the tool says no reading was found, say so plainly instead of guessing.
-- Do not fabricate field labels or stats (e.g. "resting average", "recent max") that are not literally present in the tool output.
-- Before sending your final reply, silently check every number you are about to state against the tool output. If a number cannot be found verbatim in the tool output, delete it and say the data is unavailable instead.
+- CRITICAL — DATA ACCURACY: Refer to the provided PATIENT DATA before answering ANY question about the user's own biometrics. Only state numeric values that appear VERBATIM in that provided data. Never estimate, round, infer, average, or invent a number that isn't explicitly present in the data. If you cannot find a requested value anywhere in the provided data, say so explicitly instead of producing a number.
+- When asked for the "current" or "live" heart rate specifically, use ONLY the value labeled "CURRENT HEART RATE" in the provided data. Do NOT substitute a value from "HISTORICAL DAILY HEART RATE" (those are daily avg/min/max, not current). If that reading is marked [STALE], say clearly that it's not real-time and state its actual age/date — do not present it as "current" without that caveat. If the data says no reading was found, say so plainly instead of guessing.
+- Do not fabricate field labels or stats (e.g. "resting average", "recent max") that are not literally present in the provided data.
+- Before sending your final reply, silently check every number you are about to state against the provided data. If a number cannot be found verbatim in the data, delete it and say the data is unavailable instead.
 - NEVER pair a denial (any phrasing like "I cannot find", "I don't have", "no reading is available", "I cannot retrieve") with a specific real value in the same reply. If you have a real value to report, report it — do not deny having it. If you truly have no value, do not state a number at all. Check this before every reply: if your reply contains both a specific number and a denial phrase about that same metric, delete the denial and keep only the value with its staleness caveat.
-- STRICT SCOPING: when the user asks about ONE specific metric by name (e.g. "how is my blood pressure"), your entire reply must be about that metric ONLY. Do not mention any other metric's tool output (heart rate, temperature, HRV, SpO2, sleep, steps) even if it's present in what get_patient_data returned — ignore that other data entirely for this reply. The only exception is a genuine emergency flagged by check_emergency.
+- STRICT SCOPING: when the user asks about ONE specific metric by name (e.g. "how is my blood pressure"), your entire reply must be about that metric ONLY. Do not mention any other metric's data (heart rate, temperature, HRV, SpO2, sleep, steps) even if it's present in what was fetched — ignore that other data entirely for this reply. The only exception is a genuine emergency flagged by check_emergency.
 - If the user's question does not name a specific metric (e.g. "how am I doing", "how's my health"), you may give a brief multi-metric overview — but if they name one metric, stay scoped to that one.
 
 RESPONSE FORMAT — STRICTLY FOLLOW THIS:
@@ -722,6 +714,50 @@ Output ONLY a valid JSON object matching this exact schema:
 Do NOT wrap the JSON in markdown code blocks if possible. Ensure final_reply strictly follows all response format rules (plain text, hyphens, max 4 bullets, no markdown, ending with mandatory disclaimer bullet).
 """
 
+def compute_grounding_score(final_reply: str, facts: list, patient_data: str) -> dict:
+    """
+    Lightweight script-based grounding verification score for Version D.
+    Extracts all numeric values from final_reply and checks if they appear verbatim
+    in patient_data or in the facts list.
+    """
+    if not final_reply:
+        return {
+            "grounding_score": 1.0,
+            "total_numbers_checked": 0,
+            "ungrounded_numbers": []
+        }
+
+    # Extract all integers and decimal numbers
+    numbers = re.findall(r'\d+(?:\.\d+)?', final_reply)
+    total_count = len(numbers)
+
+    if total_count == 0:
+        return {
+            "grounding_score": 1.0,
+            "total_numbers_checked": 0,
+            "ungrounded_numbers": []
+        }
+
+    facts_str = " ".join(str(f) for f in facts)
+    source_corpus = f"{patient_data}\n{facts_str}"
+
+    grounded_count = 0
+    ungrounded_numbers = []
+
+    for num in numbers:
+        if num in source_corpus:
+            grounded_count += 1
+        else:
+            ungrounded_numbers.append(num)
+
+    score = grounded_count / total_count
+    return {
+        "grounding_score": round(score, 4),
+        "total_numbers_checked": total_count,
+        "ungrounded_numbers": ungrounded_numbers
+    }
+
+
 async def run_agent_v2(message: str, user_id: str) -> tuple[str, Optional[dict[str, Any]]]:
     """
     Version D Orchestration Pipeline:
@@ -842,23 +878,47 @@ async def run_agent_v2(message: str, user_id: str) -> tuple[str, Optional[dict[s
             print(f"[VERSION D LOG] JSON parse exception ({parse_err}), falling back to raw output.")
             final_reply = raw_content
 
-        # 6. Evaluation Server-Side Logging with per-stage timing
-        print("\n==================== [VERSION D EVALUATION LOG] ====================")
-        print("--- PER-STAGE TIMING BREAKDOWN ---")
-        print(f"1. Stage 1 (Router + Safety LLM Stage): {t_router_done - t_start:.3f} seconds")
-        print(f"2. Stage 2 (Supabase Selective Fetch):  {t_fetch_done - t_fetch_start:.3f} seconds")
-        print(f"3. Stage 3 (Final LLM Generation):      {t_llm_done - t_llm_start:.3f} seconds")
-        print(f"TOTAL PIPELINE EXECUTION LATENCY:      {t_done - t_start:.3f} seconds")
-        print("-------------------------------------------------------------------")
-        print(f"Router Selected Streams: {streams}")
-        print(f"Safety Fusion Signals:   Keyword={safety_meta['keyword_triggered']} | LLM={safety_meta['llm_triggered']} (Conf={safety_meta['llm_confidence']:.2f})")
-        print("--- FACT -> RATIONALE -> ACTION BREAKDOWN ---")
-        print(f"FACTS:     {facts}")
-        print(f"RATIONALE: {rationale}")
-        print(f"ACTION:    {action}")
-        print("-------------------------------------------------------------------")
-        print(f"FINAL USER REPLY:\n{final_reply}")
-        print("====================================================================\n")
+        # Deduplicate identical lines in final_reply while preserving order
+        if final_reply:
+            lines = [ln.strip() for ln in final_reply.splitlines() if ln.strip()]
+            seen = set()
+            deduped = []
+            for ln in lines:
+                if ln not in seen:
+                    seen.add(ln)
+                    deduped.append(ln)
+            final_reply = "\n".join(deduped)
+
+        # 6. Compute Grounding Verification Score
+        grounding_res = compute_grounding_score(final_reply, facts, patient_data)
+        total_n = grounding_res["total_numbers_checked"]
+        ungrounded = grounding_res["ungrounded_numbers"]
+        grounded_n = total_n - len(ungrounded)
+        score_val = grounding_res["grounding_score"]
+
+        # 7. Evaluation Server-Side Logging with per-stage timing
+        try:
+            print("\n==================== [VERSION D EVALUATION LOG] ====================")
+            print("--- PER-STAGE TIMING BREAKDOWN ---")
+            print(f"1. Stage 1 (Router + Safety LLM Stage): {t_router_done - t_start:.3f} seconds")
+            print(f"2. Stage 2 (Supabase Selective Fetch):  {t_fetch_done - t_fetch_start:.3f} seconds")
+            print(f"3. Stage 3 (Final LLM Generation):      {t_llm_done - t_llm_start:.3f} seconds")
+            print(f"TOTAL PIPELINE EXECUTION LATENCY:      {t_done - t_start:.3f} seconds")
+            print("-------------------------------------------------------------------")
+            print(f"Router Selected Streams: {streams}")
+            print(f"Safety Fusion Signals:   Keyword={safety_meta['keyword_triggered']} | LLM={safety_meta['llm_triggered']} (Conf={safety_meta['llm_confidence']:.2f})")
+            print("--- FACT -> RATIONALE -> ACTION BREAKDOWN ---")
+            print(f"FACTS:     {str(facts).encode('ascii', 'backslashreplace').decode('ascii')}")
+            print(f"RATIONALE: {str(rationale).encode('ascii', 'backslashreplace').decode('ascii')}")
+            print(f"ACTION:    {str(action).encode('ascii', 'backslashreplace').decode('ascii')}")
+            print(f"Grounding Score: {score_val:.2f} ({grounded_n}/{total_n} numbers verified against source data)")
+            if ungrounded:
+                print(f"WARNING: Ungrounded numbers detected: {ungrounded}")
+            print("-------------------------------------------------------------------")
+            print(f"FINAL USER REPLY:\n{str(final_reply).encode('ascii', 'backslashreplace').decode('ascii')}")
+            print("====================================================================\n")
+        except Exception as log_err:
+            print(f"[VERSION D LOG] Logging exception ignored: {log_err}")
 
         return final_reply, card
     except Exception as e:
@@ -906,4 +966,4 @@ async def run_agent_b(message: str, user_id: str) -> tuple[str, Optional[dict[st
         return reply, None
     except Exception as e:
         return f"Version B Agent error: {str(e)}", None
-
+
