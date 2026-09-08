@@ -106,13 +106,19 @@ def format_demo_output(query: str, reply: str, card: dict, meta: dict, width: in
         step1_lines.append(f"Router decision:       LLM Classification -> Stream Keys {streams}")
         step1_lines.append(f"Biometric Scope:       {stream_count} of {TOTAL_BASELINE_STREAMS} streams ({clr(f'{data_reduction}% data reduction', 'green')} vs baseline)")
         
+        kw_trig = safety_meta.get("keyword_triggered", [])
+        kw_str = f"Keyword={kw_trig if kw_trig else 'None'}"
+        llm_trig = safety_meta.get("llm_triggered", False)
         conf = safety_meta.get("llm_confidence", 0.0)
+        status_str = clr("Cleared", "green") if not is_emerg else clr("Triggered", "red")
+        
+        step1_lines.append(f"Emergency Check:       {kw_str} | LLM={llm_trig} (Conf: {conf:.2f}) -> {status_str}")
+
         kw_overridden = safety_meta.get("keyword_overridden", False)
         if kw_overridden:
-            safety_status = clr(f"[OK] Cleared (Keyword Match Overridden by LLM, Conf: {conf:.2f})", "green")
-        else:
-            safety_status = clr(f"[OK] Cleared (Non-emergency, Conf: {conf:.2f})", "green")
-        step1_lines.append(f"Emergency Check:       {safety_status}")
+            term_str = ", ".join(kw_trig) if kw_trig else "matched term"
+            step1_lines.append(f"Override:              Keyword flagged '{term_str}' but LLM overruled (high-confidence non-emergency)")
+
         print_box(f"STEP 1: ROUTING & SAFETY GATE ({t_stage1:.2f}s)", step1_lines, width=width, border_color="cyan")
 
     print()
@@ -123,8 +129,7 @@ def format_demo_output(query: str, reply: str, card: dict, meta: dict, width: in
         t_llm = timing.get("stage3_llm", 0.0)
         step2_lines = []
         step2_lines.append(f"Selective DB Fetch:    {t_fetch:.2f}s | Grounded LLM Gen: {t_llm:.2f}s")
-        step2_lines.append(f"Facts Extracted:       {len(facts)} verified biometric facts from database")
-        
+
         if score_val >= 0.99:
             score_str = clr(f"{score_val:.2f} ({grounded_nums}/{total_nums} numbers verified verbatim)", "green")
         elif score_val >= 0.70:
@@ -133,8 +138,19 @@ def format_demo_output(query: str, reply: str, card: dict, meta: dict, width: in
             score_str = clr(f"{score_val:.2f} (WARNING: Ungrounded numbers: {ungrounded})", "red")
             
         step2_lines.append(f"Grounding Score:       {score_str}")
+
+        if facts:
+            step2_lines.append("Facts:")
+            for f in facts:
+                step2_lines.append(f" - {f}")
+        else:
+            step2_lines.append("Facts:                 None extracted")
+
         if meta.get("rationale"):
             step2_lines.append(f"Clinical Rationale:    {meta.get('rationale')}")
+
+        if meta.get("action"):
+            step2_lines.append(f"Recommended Action:    {meta.get('action')}")
             
         print_box(f"STEP 2: GROUNDED REASONING & VERIFICATION", step2_lines, width=width, border_color="blue")
         print()
