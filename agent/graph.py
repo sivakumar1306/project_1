@@ -758,7 +758,7 @@ def compute_grounding_score(final_reply: str, facts: list, patient_data: str) ->
     }
 
 
-async def run_agent_v2(message: str, user_id: str, verbose: bool = False) -> Any:
+async def run_agent_v2(message: str, user_id: str, verbose: bool = False, suppress_internal_log: bool = False) -> Any:
     """
     Version D Orchestration Pipeline:
     1. Parallel Query Router + LLM Safety Fusion (asyncio.gather)
@@ -787,9 +787,10 @@ async def run_agent_v2(message: str, user_id: str, verbose: bool = False) -> Any
         if is_emergency:
             router_task.cancel() # Cancel unneeded router task immediately
             t_done = time.monotonic()
-            print(f"\n[VERSION D LOG] Total Emergency Short-Circuit Latency: {t_done - t_start:.3f}s")
-            print(f"[VERSION D LOG] Safety Fusion Fired: TRUE | Meta: {safety_meta}")
-            print(f"[VERSION D LOG] Grounding: EMERGENCY TRIGGERED -> Short-circuit")
+            if not suppress_internal_log:
+                print(f"\n[VERSION D LOG] Total Emergency Short-Circuit Latency: {t_done - t_start:.3f}s")
+                print(f"[VERSION D LOG] Safety Fusion Fired: TRUE | Meta: {safety_meta}")
+                print(f"[VERSION D LOG] Grounding: EMERGENCY TRIGGERED -> Short-circuit")
             if verbose:
                 emerg_meta = {
                     "is_emergency": True,
@@ -892,7 +893,8 @@ async def run_agent_v2(message: str, user_id: str, verbose: bool = False) -> Any
             else:
                 final_reply = raw_content
         except Exception as parse_err:
-            print(f"[VERSION D LOG] JSON parse exception ({parse_err}), falling back to raw output.")
+            if not suppress_internal_log:
+                print(f"[VERSION D LOG] JSON parse exception ({parse_err}), falling back to raw output.")
             final_reply = raw_content
 
         # Deduplicate identical lines in final_reply while preserving order
@@ -914,28 +916,29 @@ async def run_agent_v2(message: str, user_id: str, verbose: bool = False) -> Any
         score_val = grounding_res["grounding_score"]
 
         # 7. Evaluation Server-Side Logging with per-stage timing
-        try:
-            print("\n==================== [VERSION D EVALUATION LOG] ====================")
-            print("--- PER-STAGE TIMING BREAKDOWN ---")
-            print(f"1. Stage 1 (Router + Safety LLM Stage): {t_router_done - t_start:.3f} seconds")
-            print(f"2. Stage 2 (Supabase Selective Fetch):  {t_fetch_done - t_fetch_start:.3f} seconds")
-            print(f"3. Stage 3 (Final LLM Generation):      {t_llm_done - t_llm_start:.3f} seconds")
-            print(f"TOTAL PIPELINE EXECUTION LATENCY:      {t_done - t_start:.3f} seconds")
-            print("-------------------------------------------------------------------")
-            print(f"Router Selected Streams: {streams}")
-            print(f"Safety Fusion Signals:   Keyword={safety_meta['keyword_triggered']} | LLM={safety_meta['llm_triggered']} (Conf={safety_meta['llm_confidence']:.2f})")
-            print("--- FACT -> RATIONALE -> ACTION BREAKDOWN ---")
-            print(f"FACTS:     {str(facts).encode('ascii', 'backslashreplace').decode('ascii')}")
-            print(f"RATIONALE: {str(rationale).encode('ascii', 'backslashreplace').decode('ascii')}")
-            print(f"ACTION:    {str(action).encode('ascii', 'backslashreplace').decode('ascii')}")
-            print(f"Grounding Score: {score_val:.2f} ({grounded_n}/{total_n} numbers verified against source data)")
-            if ungrounded:
-                print(f"WARNING: Ungrounded numbers detected: {ungrounded}")
-            print("-------------------------------------------------------------------")
-            print(f"FINAL USER REPLY:\n{str(final_reply).encode('ascii', 'backslashreplace').decode('ascii')}")
-            print("====================================================================\n")
-        except Exception as log_err:
-            print(f"[VERSION D LOG] Logging exception ignored: {log_err}")
+        if not suppress_internal_log:
+            try:
+                print("\n==================== [VERSION D EVALUATION LOG] ====================")
+                print("--- PER-STAGE TIMING BREAKDOWN ---")
+                print(f"1. Stage 1 (Router + Safety LLM Stage): {t_router_done - t_start:.3f} seconds")
+                print(f"2. Stage 2 (Supabase Selective Fetch):  {t_fetch_done - t_fetch_start:.3f} seconds")
+                print(f"3. Stage 3 (Final LLM Generation):      {t_llm_done - t_llm_start:.3f} seconds")
+                print(f"TOTAL PIPELINE EXECUTION LATENCY:      {t_done - t_start:.3f} seconds")
+                print("-------------------------------------------------------------------")
+                print(f"Router Selected Streams: {streams}")
+                print(f"Safety Fusion Signals:   Keyword={safety_meta['keyword_triggered']} | LLM={safety_meta['llm_triggered']} (Conf={safety_meta['llm_confidence']:.2f})")
+                print("--- FACT -> RATIONALE -> ACTION BREAKDOWN ---")
+                print(f"FACTS:     {str(facts).encode('ascii', 'backslashreplace').decode('ascii')}")
+                print(f"RATIONALE: {str(rationale).encode('ascii', 'backslashreplace').decode('ascii')}")
+                print(f"ACTION:    {str(action).encode('ascii', 'backslashreplace').decode('ascii')}")
+                print(f"Grounding Score: {score_val:.2f} ({grounded_n}/{total_n} numbers verified against source data)")
+                if ungrounded:
+                    print(f"WARNING: Ungrounded numbers detected: {ungrounded}")
+                print("-------------------------------------------------------------------")
+                print(f"FINAL USER REPLY:\n{str(final_reply).encode('ascii', 'backslashreplace').decode('ascii')}")
+                print("====================================================================\n")
+            except Exception as log_err:
+                print(f"[VERSION D LOG] Logging exception ignored: {log_err}")
 
         if verbose:
             verbose_meta = {

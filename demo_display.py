@@ -171,7 +171,7 @@ async def main():
                 break
 
             print(clr("\nProcessing query through Version D pipeline...", "dim"))
-            reply, card, meta = await run_agent_v2(user_input, TEST_USER_ID, verbose=True)
+            reply, card, meta = await run_agent_v2(user_input, TEST_USER_ID, verbose=True, suppress_internal_log=True)
             
             q_str = f'"{user_input}"'
             print(f"\nQuery: {clr(q_str, 'bold')}\n")
