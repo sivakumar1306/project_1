@@ -758,7 +758,7 @@ def compute_grounding_score(final_reply: str, facts: list, patient_data: str) ->
     }
 
 
-async def run_agent_v2(message: str, user_id: str) -> tuple[str, Optional[dict[str, Any]]]:
+async def run_agent_v2(message: str, user_id: str, verbose: bool = False) -> Any:
     """
     Version D Orchestration Pipeline:
     1. Parallel Query Router + LLM Safety Fusion (asyncio.gather)
@@ -790,6 +790,23 @@ async def run_agent_v2(message: str, user_id: str) -> tuple[str, Optional[dict[s
             print(f"\n[VERSION D LOG] Total Emergency Short-Circuit Latency: {t_done - t_start:.3f}s")
             print(f"[VERSION D LOG] Safety Fusion Fired: TRUE | Meta: {safety_meta}")
             print(f"[VERSION D LOG] Grounding: EMERGENCY TRIGGERED -> Short-circuit")
+            if verbose:
+                emerg_meta = {
+                    "is_emergency": True,
+                    "streams": [],
+                    "safety_meta": safety_meta,
+                    "grounding_res": {"grounding_score": 1.0, "total_numbers_checked": 0, "ungrounded_numbers": []},
+                    "facts": [],
+                    "rationale": "Emergency detected by safety fusion gate",
+                    "action": "Immediate medical attention / emergency services",
+                    "timing": {
+                        "stage1_safety_router": t_done - t_start,
+                        "stage2_fetch": 0.0,
+                        "stage3_llm": 0.0,
+                        "total": t_done - t_start
+                    }
+                }
+                return emerg_response, None, emerg_meta
             return emerg_response, None
 
         # If not an emergency, await router task result
@@ -920,8 +937,28 @@ async def run_agent_v2(message: str, user_id: str) -> tuple[str, Optional[dict[s
         except Exception as log_err:
             print(f"[VERSION D LOG] Logging exception ignored: {log_err}")
 
+        if verbose:
+            verbose_meta = {
+                "is_emergency": False,
+                "streams": streams,
+                "safety_meta": safety_meta,
+                "grounding_res": grounding_res,
+                "facts": facts,
+                "rationale": rationale,
+                "action": action,
+                "timing": {
+                    "stage1_safety_router": t_router_done - t_start,
+                    "stage2_fetch": t_fetch_done - t_fetch_start,
+                    "stage3_llm": t_llm_done - t_llm_start,
+                    "total": t_done - t_start
+                }
+            }
+            return final_reply, card, verbose_meta
+
         return final_reply, card
     except Exception as e:
+        if verbose:
+            return f"Version D Agent error: {str(e)}", None, {}
         return f"Version D Agent error: {str(e)}", None
 
 
