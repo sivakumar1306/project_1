@@ -205,12 +205,12 @@ def format_demo_output(query: str, reply: str, card: dict, meta: dict, width: in
 
 async def main():
     box_width = get_safe_width(74)
-    print_header("MEDXAI - LIVE QUERY ANALYSIS DEMO", width=box_width)
-    print(clr("  This interactive demo showcases the Version D Architecture:", "dim"))
+    print_header("FULL VERSION — GROUNDED PIPELINE & SAFETY FUSION", width=box_width)
+    print(clr("  This terminal runs the FULL VERSION Architecture:", "dim"))
     print(clr("  * Parallel Query Router & Safety Fusion Gate", "dim"))
-    print(clr("  * Selective Biometric Stream Fetching (Data Reduction)", "dim"))
+    print(clr("  * Selective Biometric Stream Fetching (90%+ Data Reduction)", "dim"))
     print(clr("  * Fact -> Rationale -> Action Grounded Clinical Reasoning", "dim"))
-    print(clr("  * Real-Time Numerical Grounding Verification Engine", "dim"))
+    print(clr("  * Real-Time Numerical Grounding Verification Engine & Dynamic Cards", "dim"))
     print(clr("  Type 'exit' or 'q' to quit.\n", "dim"))
 
     while True:
@@ -235,4 +235,6 @@ async def main():
             print(clr(f"Error executing demo query: {e}", "red"))
 
 if __name__ == "__main__":
+    if sys.platform == "win32" and hasattr(asyncio, "WindowsSelectorEventLoopPolicy"):
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(main())

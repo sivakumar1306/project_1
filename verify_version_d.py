@@ -18,9 +18,7 @@ TEST_USER_ID = "00000000-0000-0000-0000-000000000000"
 async def run_verification():
     results = {}
 
-    print("==========================================================================")
-    print("         MEDXAI VERSION D VERIFICATION-ONLY EVALUATION SUITE")
-    print("==========================================================================")
+
 
     # ------------------------------------------------------------------------
     # 1. ROUTER VERIFICATION
@@ -147,13 +145,11 @@ async def run_verification():
     no_markdown_bold = "**" not in reply_bp and "##" not in reply_bp
     lines = reply_bp.strip().split("\n")
     bullet_lines = [l for l in lines if l.strip().startswith("-")]
-    valid_bullet_count = len(bullet_lines) <= 5 # including disclaimer
-    ends_with_disclaimer = "general health information, not medical advice" in reply_bp.lower()
-    
-    passed_4a_4b = no_markdown_bold and valid_bullet_count and ends_with_disclaimer
+    valid_bullet_count = len(bullet_lines) <= 4
+    passed_4a_4b = no_markdown_bold and valid_bullet_count
     results["4a_4b"] = {
         "test": "Grounding 4a/4b: End-to-end format compliance",
-        "output": f"Bullets: {len(bullet_lines)}, No markdown bold: {no_markdown_bold}, Ends disclaimer: {ends_with_disclaimer}",
+        "output": f"Bullets: {len(bullet_lines)}, No markdown bold: {no_markdown_bold}",
         "pass": passed_4a_4b
     }
     print(f"[{'PASS' if passed_4a_4b else 'FAIL'}] 4a/4b: Format compliant: {passed_4a_4b}")
@@ -231,4 +227,7 @@ async def run_verification():
     print("==========================================================================\n")
 
 if __name__ == "__main__":
+    import sys
+    if sys.platform == "win32" and hasattr(asyncio, "WindowsSelectorEventLoopPolicy"):
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(run_verification())

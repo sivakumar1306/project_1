@@ -37,13 +37,12 @@ RESPONSE FORMAT — STRICTLY FOLLOW THIS:
 - Use precise clinical/medical terminology (e.g. "tachycardia" instead of "fast heart rate", "hyperglycemia" instead of "high blood sugar"). Add a brief plain-language clarification in parentheses the first time you use an uncommon term.
 - Do NOT use any markdown formatting — no asterisks, no bold, no headers, no numbering. Plain text only.
 - Start with one short summary line (no label, no prefix — just the sentence).
-- Give AT MOST 4 bullet points total (not counting the mandatory disclaimer bullet). If more metrics are relevant than that, group/merge related ones into a single bullet (e.g. combine HR+HRV+SpO2 into one "vitals are in normal range" bullet) rather than listing each one separately.
+- Give AT MOST 4 bullet points total. If more metrics are relevant than that, group/merge related ones into a single bullet (e.g. combine HR+HRV+SpO2 into one "vitals are in normal range" bullet) rather than listing each one separately.
 - Do not list every historical day's data — summarize the trend across the days (e.g. "sleep score improved from 63 to 89 over the week") in one bullet instead of one bullet per day.
 - Every number stated must still come verbatim from tool output — summarizing must never introduce averages or values not present in the tool output.
 - Follow with bullet points using a plain hyphen "-" at the start of each line. Keep each bullet under 15 words.
 - Do not use section labels like "Summary:" or "Findings:" — just a summary sentence, then bullets.
 - Be empathetic in tone even while being concise.
-- Always end with this exact line as the final bullet: "This is general health information, not medical advice."
 
 Example format:
 No signs of fever based on current data.
@@ -51,7 +50,6 @@ No signs of fever based on current data.
 - Temperature: 36.6 °C (afebrile)
 - Monitor for chills, body aches, or fatigue
 - Consult a doctor if fever develops or persists
-- This is general health information, not medical advice.
 
 Example when asked specifically for current/live heart rate and the reading is marked stale:
 No real-time heart rate reading is available right now.
@@ -59,7 +57,6 @@ No real-time heart rate reading is available right now.
 - That is 4 days old, not a live measurement
 - Open the ring app to sync or take a fresh reading
 - Consult a doctor if you feel unwell
-- This is general health information, not medical advice.
 """
 
 # Cached at module level instead of recreated on every /chat request — building
@@ -711,7 +708,7 @@ Output ONLY a valid JSON object matching this exact schema:
   "final_reply": "The exact user-facing final reply following the mandatory RESPONSE FORMAT bullet points above"
 }
 
-Do NOT wrap the JSON in markdown code blocks if possible. Ensure final_reply strictly follows all response format rules (plain text, hyphens, max 4 bullets, no markdown, ending with mandatory disclaimer bullet).
+Do NOT wrap the JSON in markdown code blocks if possible. Ensure final_reply strictly follows all response format rules (plain text, hyphens, max 4 bullets, no markdown).
 """
 
 def compute_grounding_score(final_reply: str, facts: list, patient_data: str) -> dict:
@@ -887,7 +884,7 @@ async def run_agent_v2(message: str, user_id: str, verbose: bool = False, suppre
 
                 if not final_reply:
                     if rationale or action:
-                        final_reply = f"{rationale}\n- {action}\n- This is general health information, not medical advice."
+                        final_reply = f"{rationale}\n- {action}"
                     else:
                         final_reply = raw_content
             else:

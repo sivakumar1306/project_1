@@ -73,10 +73,11 @@ def print_box(step_title: str, lines: list[str], width: int = 76, border_color: 
     print(clr(bottom_line, border_color))
 
 async def main():
-    print_header("MEDXAI BASELINE DEMO — VERSION C (FULL-DATABASE FETCH)", width=76)
-    print(clr("  This terminal runs VERSION C (Old Baseline Architecture):", "dim"))
-    print(clr("  • Unselectively fetches ALL 11 biometric streams from Supabase on every prompt", "dim"))
-    print(clr("  • Dumps entire patient database history into the LLM prompt context window", "dim"))
+    print_header("BASE VERSION — UNSELECTIVE DIRECT LLM FETCH", width=76)
+    print(clr("  This terminal runs the BASE VERSION Architecture:", "dim"))
+    print(clr("  * Direct LLM Prompting without Router or Safety Fusion Gate", "dim"))
+    print(clr("  * Unselectively fetches ALL 11 biometric streams on every prompt", "dim"))
+    print(clr("  * Dumps full patient database history directly into LLM context window", "dim"))
     print(clr("  Type any health question (or 'exit' or 'q' to quit).\n", "dim"))
 
     while True:
@@ -115,4 +116,6 @@ async def main():
             print(clr(f"Error executing Version C query: {e}", "red"))
 
 if __name__ == "__main__":
+    if sys.platform == "win32" and hasattr(asyncio, "WindowsSelectorEventLoopPolicy"):
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(main())
