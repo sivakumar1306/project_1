@@ -131,19 +131,31 @@ _WEEKDAY_ABBR = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 def _fmt_date(d: dt) -> str:
     return d.strftime('%Y-%m-%d')
 
-async def get_sleep_card_data(user_id: str) -> Optional[dict[str, Any]]:
-    try:
-        if not user_id or user_id == "anonymous":
-            return {
-                "type": "sleep_highlights",
-                "data": {
-                    "time_awake_min": 10,
-                    "light_sleep_min": 63,
-                    "deep_sleep_min": 250,
-                    "total_label": "5 hours and 13 minutes"
-                }
-            }
+# Card policy: a card only ever shows values read from the user's own rows
+# (or a mean/min/max over those rows). No row, a failed query, or an
+# anonymous user -> None, and chat_screen.dart's `if (card != null)` check
+# skips the card. A day without a reading is null, never a made-up 0.
 
+def _num(v: Any) -> Any:
+    """DB value as-is (NUMERIC arrives as int or float); whole floats become int."""
+    if v is None:
+        return None
+    f = float(v)
+    return int(f) if f.is_integer() else f
+
+
+def _has_user(user_id: str) -> bool:
+    return bool(user_id) and user_id != "anonymous"
+
+
+def _last_7_days(now: dt) -> list[dt]:
+    return [now - timedelta(days=6 - i) for i in range(7)]
+
+
+async def get_sleep_card_data(user_id: str) -> Optional[dict[str, Any]]:
+    if not _has_user(user_id):
+        return None
+    try:
         def _query():
             return supabase.table("user_sleep")\
                 .select("*")\
@@ -153,198 +165,93 @@ async def get_sleep_card_data(user_id: str) -> Optional[dict[str, Any]]:
                 .execute()
 
         r = await asyncio.to_thread(_query)
+        if not r.data:
+            return None
+        row = r.data[0]
+        total_val = row.get("total_duration")
+        if total_val is None:
+            return None
+        total_min = int(total_val // 60) if total_val > 1440 else int(total_val)   # some rows store seconds
 
-        if r.data:
-            row = r.data[0]
-            total_val = row.get("total_duration") or 0
-            if total_val > 1440:
-                total_min = total_val // 60
-            else:
-                total_min = total_val
-
-            hours = total_min // 60
-            minutes = total_min % 60
-            total_label = f"{hours} hour{'s' if hours != 1 else ''} and {minutes} minute{'s' if minutes != 1 else ''}"
-
-            time_awake_min = int(total_min * 0.05)
-            deep_sleep_min = int(total_min * 0.25)
-            light_sleep_min = total_min - time_awake_min - deep_sleep_min
-
-            return {
-                "type": "sleep_highlights",
-                "data": {
-                    "time_awake_min": time_awake_min,
-                    "light_sleep_min": light_sleep_min,
-                    "deep_sleep_min": deep_sleep_min,
-                    "total_label": total_label
-                }
-            }
+        hours = total_min // 60
+        minutes = total_min % 60
+        data = {"total_label": f"{hours} hour{'s' if hours != 1 else ''} and {minutes} minute{'s' if minutes != 1 else ''}"}
+        # Sleep stages only when the row really has them (schema.sql's user_sleep has no stage columns).
+        for field in ("time_awake_min", "light_sleep_min", "deep_sleep_min"):
+            if row.get(field) is not None:
+                data[field] = _num(row[field])
+        return {"type": "sleep_highlights", "data": data}
     except Exception as e:
         print(f"Error fetching sleep card data: {e}")
+        return None
 
-    return {
-        "type": "sleep_highlights",
-        "data": {
-            "time_awake_min": 10,
-            "light_sleep_min": 63,
-            "deep_sleep_min": 250,
-            "total_label": "5 hours and 13 minutes"
-        }
-    }
+
+async def _daily_trend_card(user_id: str, table: str, value_col: str, card_type: str, unit: str,
+                            min_col: Optional[str] = None, max_col: Optional[str] = None) -> Optional[dict[str, Any]]:
+    """7-day trend card from a one-row-per-day table (user_hr, user_spo2, user_hrv, user_steps)."""
+    if not _has_user(user_id):
+        return None
+    try:
+        now = dt.utcnow()
+
+        def _query():
+            return supabase.table(table).select("*").eq("user_id", user_id)\
+                .gte("date", _fmt_date(now - timedelta(days=6)))\
+                .lte("date", _fmt_date(now)).order("date", desc=False).execute()
+
+        result = await asyncio.to_thread(_query)
+        rows = result.data or []
+        by_date = {str(r.get("date"))[:10]: r for r in rows}
+        values, labels = [], []
+        for day in _last_7_days(now):
+            row = by_date.get(_fmt_date(day))
+            values.append(_num(row.get(value_col)) if row else None)
+            labels.append(_WEEKDAY_ABBR[day.weekday()])
+        present = [v for v in values if v is not None]
+        if not present:
+            return None
+        data: dict[str, Any] = {"avg": round(sum(present) / len(present)), "unit": unit, "values": values, "labels": labels}
+        if min_col:
+            mins = [_num(r[min_col]) for r in rows if r.get(min_col) is not None]
+            data["min"] = min(mins) if mins else None
+        if max_col:
+            maxs = [_num(r[max_col]) for r in rows if r.get(max_col) is not None]
+            data["max"] = max(maxs) if maxs else None
+        return {"type": card_type, "data": data}
+    except Exception as e:
+        print(f"Error fetching {card_type} card data: {e}")
+        return None
+
 
 async def get_hr_card_data(user_id: str) -> Optional[dict[str, Any]]:
-    demo = {
-        "type": "heart_rate_trend",
-        "data": {
-            "avg": 78, "min": 58, "max": 112, "unit": "bpm",
-            "values": [72, 75, 80, 77, 82, 79, 78],
-            "labels": _WEEKDAY_ABBR,
-        }
-    }
-    if not user_id or user_id == "anonymous":
-        return demo
-    try:
-        now = dt.utcnow()
+    return await _daily_trend_card(user_id, "user_hr", "avg_hr", "heart_rate_trend", "bpm", "min_hr", "max_hr")
 
-        def _query():
-            return supabase.table("user_hr").select("*").eq("user_id", user_id)\
-                .gte("date", _fmt_date(now - timedelta(days=6)))\
-                .lte("date", _fmt_date(now)).order("date", desc=False).execute()
-
-        result = await asyncio.to_thread(_query)
-        rows = result.data or []
-        if not rows:
-            return demo
-        by_date = {r["date"]: r for r in rows}
-        values, labels = [], []
-        for i in range(7):
-            day = now - timedelta(days=6 - i)
-            row = by_date.get(_fmt_date(day))
-            values.append(int(row["avg_hr"]) if row and row.get("avg_hr") else 0)
-            labels.append(_WEEKDAY_ABBR[day.weekday()])
-        non_zero = [v for v in values if v > 0]
-        mins = [int(r["min_hr"]) for r in rows if r.get("min_hr")]
-        maxs = [int(r["max_hr"]) for r in rows if r.get("max_hr")]
-        return {
-            "type": "heart_rate_trend",
-            "data": {
-                "avg": round(sum(non_zero) / len(non_zero)) if non_zero else 0,
-                "min": min(mins) if mins else 0,
-                "max": max(maxs) if maxs else 0,
-                "unit": "bpm",
-                "values": values,
-                "labels": labels,
-            }
-        }
-    except Exception as e:
-        print(f"Error fetching HR card data: {e}")
-        return demo
 
 async def get_spo2_card_data(user_id: str) -> Optional[dict[str, Any]]:
-    demo = {
-        "type": "spo2_trend",
-        "data": {
-            "avg": 97, "min": 94, "max": 99, "unit": "%",
-            "values": [96, 97, 98, 97, 95, 98, 97],
-            "labels": _WEEKDAY_ABBR,
-        }
-    }
-    if not user_id or user_id == "anonymous":
-        return demo
-    try:
-        now = dt.utcnow()
+    return await _daily_trend_card(user_id, "user_spo2", "avg_spo2", "spo2_trend", "%", "min_spo2", "max_spo2")
 
-        def _query():
-            return supabase.table("user_spo2").select("*").eq("user_id", user_id)\
-                .gte("date", _fmt_date(now - timedelta(days=6)))\
-                .lte("date", _fmt_date(now)).order("date", desc=False).execute()
-
-        result = await asyncio.to_thread(_query)
-        rows = result.data or []
-        if not rows:
-            return demo
-        by_date = {r["date"]: r for r in rows}
-        values, labels = [], []
-        for i in range(7):
-            day = now - timedelta(days=6 - i)
-            row = by_date.get(_fmt_date(day))
-            values.append(int(row["avg_spo2"]) if row and row.get("avg_spo2") else 0)
-            labels.append(_WEEKDAY_ABBR[day.weekday()])
-        non_zero = [v for v in values if v > 0]
-        mins = [int(r["min_spo2"]) for r in rows if r.get("min_spo2")]
-        maxs = [int(r["max_spo2"]) for r in rows if r.get("max_spo2")]
-        return {
-            "type": "spo2_trend",
-            "data": {
-                "avg": round(sum(non_zero) / len(non_zero)) if non_zero else 0,
-                "min": min(mins) if mins else 0,
-                "max": max(maxs) if maxs else 0,
-                "unit": "%",
-                "values": values,
-                "labels": labels,
-            }
-        }
-    except Exception as e:
-        print(f"Error fetching SpO2 card data: {e}")
-        return demo
 
 async def get_hrv_card_data(user_id: str) -> Optional[dict[str, Any]]:
-    demo = {
-        "type": "hrv_trend",
-        "data": {
-            "avg": 52, "min": 30, "max": 78, "unit": "ms",
-            "values": [45, 50, 55, 48, 60, 52, 52],
-            "labels": _WEEKDAY_ABBR,
-        }
-    }
-    if not user_id or user_id == "anonymous":
-        return demo
-    try:
-        now = dt.utcnow()
+    return await _daily_trend_card(user_id, "user_hrv", "avg_hrv", "hrv_trend", "ms", "min_hrv", "max_hrv")
 
-        def _query():
-            return supabase.table("user_hrv").select("*").eq("user_id", user_id)\
-                .gte("date", _fmt_date(now - timedelta(days=6)))\
-                .lte("date", _fmt_date(now)).order("date", desc=False).execute()
 
-        result = await asyncio.to_thread(_query)
-        rows = result.data or []
-        if not rows:
-            return demo
-        by_date = {r["date"]: r for r in rows}
-        values, labels = [], []
-        for i in range(7):
-            day = now - timedelta(days=6 - i)
-            row = by_date.get(_fmt_date(day))
-            values.append(int(row["avg_hrv"]) if row and row.get("avg_hrv") else 0)
-            labels.append(_WEEKDAY_ABBR[day.weekday()])
-        non_zero = [v for v in values if v > 0]
-        mins = [int(r["min_hrv"]) for r in rows if r.get("min_hrv")]
-        maxs = [int(r["max_hrv"]) for r in rows if r.get("max_hrv")]
-        return {
-            "type": "hrv_trend",
-            "data": {
-                "avg": round(sum(non_zero) / len(non_zero)) if non_zero else 0,
-                "min": min(mins) if mins else 0,
-                "max": max(maxs) if maxs else 0,
-                "unit": "ms",
-                "values": values,
-                "labels": labels,
-            }
-        }
-    except Exception as e:
-        print(f"Error fetching HRV card data: {e}")
-        return demo
+async def get_steps_card_data(user_id: str) -> Optional[dict[str, Any]]:
+    return await _daily_trend_card(user_id, "user_steps", "steps", "steps_trend", "steps")
+
+
+def _by_day(rows: list[dict], ts_col: str = "measured_at") -> dict[str, list[dict]]:
+    out: dict[str, list[dict]] = {}
+    for r in rows:
+        try:
+            measured_dt = dt.fromisoformat(str(r.get(ts_col)).replace("Z", "+00:00"))
+        except Exception:
+            continue
+        out.setdefault(_fmt_date(measured_dt), []).append(r)
+    return out
+
 
 async def get_bp_card_data(user_id: str) -> Optional[dict[str, Any]]:
-    # No hardcoded/demo fallback for this card (unlike the others above) —
-    # blood pressure readings are sparse and irregular enough that a fake
-    # "118/76, 7 day trend" looked indistinguishable from real data and
-    # actively contradicted the chat reply when no real BP data existed.
-    # Returning None here means chat_screen.dart's `if (card != null)` check
-    # simply skips rendering the card — confirmed this is already handled
-    # correctly on the frontend, no card is safer than a fabricated one.
-    if not user_id or user_id == "anonymous":
+    if not _has_user(user_id):
         return None
     try:
         now = dt.utcnow()
@@ -356,46 +263,26 @@ async def get_bp_card_data(user_id: str) -> Optional[dict[str, Any]]:
 
         result = await asyncio.to_thread(_query)
         rows = result.data or []
-        if not rows:
-            return None
-
-        # Multiple BP readings can land on the same calendar day (confirmed
-        # via direct query: users often take several readings within minutes
-        # of each other). Keep only the LATEST reading per day so a "7 day
-        # trend" actually spans 7 distinct calendar days instead of the last
-        # 7 raw rows, which could all fall within 1-2 days and repeat the
-        # same weekday label (e.g. "Sat, Sun, Sun, Sun, Sun, Sun, Sun").
-        # Mirrors the by_date grouping pattern already used in
-        # get_hr_card_data / get_spo2_card_data / get_hrv_card_data / steps.
-        by_date: dict[str, dict] = {}
-        for r in rows:
-            try:
-                measured_dt = dt.fromisoformat(str(r.get("measured_at")).replace("Z", "+00:00"))
-            except Exception:
-                continue
-            date_key = _fmt_date(measured_dt)
-            existing = by_date.get(date_key)
-            if existing is None or str(r.get("measured_at")) > str(existing.get("measured_at")):
-                by_date[date_key] = r
+        # Several readings can land on one day; keep the LATEST per day so the
+        # 7-day trend spans 7 distinct calendar days.
+        by_date = {d: max(rs, key=lambda r: str(r.get("measured_at"))) for d, rs in _by_day(rows).items()}
 
         sbp_values, dbp_values, labels = [], [], []
-        for i in range(7):
-            day = now - timedelta(days=6 - i)
+        for day in _last_7_days(now):
             row = by_date.get(_fmt_date(day))
-            sbp_values.append(int(row["systolic"]) if row and row.get("systolic") else 0)
-            dbp_values.append(int(row["diastolic"]) if row and row.get("diastolic") else 0)
+            sbp_values.append(_num(row.get("systolic")) if row else None)
+            dbp_values.append(_num(row.get("diastolic")) if row else None)
             labels.append(_WEEKDAY_ABBR[day.weekday()])
 
-        sbp_nz = [v for v in sbp_values if v > 0]
-        dbp_nz = [v for v in dbp_values if v > 0]
+        sbp_nz = [v for v in sbp_values if v is not None]
+        dbp_nz = [v for v in dbp_values if v is not None]
         if not sbp_nz and not dbp_nz:
             return None
-
         return {
             "type": "bp_trend",
             "data": {
-                "sbp_avg": round(sum(sbp_nz) / len(sbp_nz)) if sbp_nz else 0,
-                "dbp_avg": round(sum(dbp_nz) / len(dbp_nz)) if dbp_nz else 0,
+                "sbp_avg": round(sum(sbp_nz) / len(sbp_nz)) if sbp_nz else None,
+                "dbp_avg": round(sum(dbp_nz) / len(dbp_nz)) if dbp_nz else None,
                 "sbp_values": sbp_values,
                 "dbp_values": dbp_values,
                 "labels": labels,
@@ -405,176 +292,62 @@ async def get_bp_card_data(user_id: str) -> Optional[dict[str, Any]]:
         print(f"Error fetching BP card data: {e}")
         return None
 
-async def get_steps_card_data(user_id: str) -> Optional[dict[str, Any]]:
-    demo = {
-        "type": "steps_trend",
-        "data": {
-            "avg": 6400, "unit": "steps",
-            "values": [5200, 7100, 6800, 4900, 8200, 6300, 6400],
-            "labels": _WEEKDAY_ABBR,
-        }
-    }
-    if not user_id or user_id == "anonymous":
-        return demo
+
+async def _reading_trend_card(user_id: str, table: str, value_col: str, card_type: str, unit: str,
+                              ndp: Optional[int]) -> Optional[dict[str, Any]]:
+    """7-day trend of daily means from a many-readings-per-day table (user_temp, user_stress)."""
+    if not _has_user(user_id):
+        return None
     try:
         now = dt.utcnow()
+        cutoff_str = _fmt_date(now - timedelta(days=6))
 
         def _query():
-            return supabase.table("user_steps").select("*").eq("user_id", user_id)\
-                .gte("date", _fmt_date(now - timedelta(days=6)))\
-                .lte("date", _fmt_date(now)).order("date", desc=False).execute()
+            return supabase.table(table).select("*").eq("user_id", user_id)\
+                .gte("measured_at", cutoff_str)\
+                .order("measured_at", desc=False).execute()
 
         result = await asyncio.to_thread(_query)
         rows = result.data or []
-        if not rows:
-            return demo
-        by_date = {r["date"]: r for r in rows}
+        by_date = {d: [float(r[value_col]) for r in rs if r.get(value_col) is not None] for d, rs in _by_day(rows).items()}
+
         values, labels = [], []
-        for i in range(7):
-            day = now - timedelta(days=6 - i)
-            row = by_date.get(_fmt_date(day))
-            values.append(int(row["steps"]) if row and row.get("steps") else 0)
+        for day in _last_7_days(now):
+            day_vals = by_date.get(_fmt_date(day)) or []
+            values.append(round(sum(day_vals) / len(day_vals), ndp) if day_vals else None)
             labels.append(_WEEKDAY_ABBR[day.weekday()])
-        non_zero = [v for v in values if v > 0]
+
+        present = [v for v in values if v is not None]
+        if not present:
+            return None
+        all_vals = [_num(r[value_col]) for r in rows if r.get(value_col) is not None]
         return {
-            "type": "steps_trend",
+            "type": card_type,
             "data": {
-                "avg": round(sum(non_zero) / len(non_zero)) if non_zero else 0,
-                "unit": "steps",
+                "avg": round(sum(present) / len(present), ndp),
+                "min": min(all_vals),
+                "max": max(all_vals),
+                "unit": unit,
                 "values": values,
                 "labels": labels,
             }
         }
     except Exception as e:
-        print(f"Error fetching steps card data: {e}")
-        return demo
+        print(f"Error fetching {card_type} card data: {e}")
+        return None
+
 
 async def get_temperature_card_data(user_id: str) -> Optional[dict[str, Any]]:
-    if not user_id or user_id == "anonymous":
-        return None
-    try:
-        now = dt.utcnow()
-        cutoff_str = _fmt_date(now - timedelta(days=6))
+    return await _reading_trend_card(user_id, "user_temp", "value_c", "temperature_trend", "°C", 1)
 
-        def _query():
-            return supabase.table("user_temp").select("*").eq("user_id", user_id)\
-                .gte("measured_at", cutoff_str)\
-                .order("measured_at", desc=False).execute()
-
-        result = await asyncio.to_thread(_query)
-        rows = result.data or []
-        if not rows:
-            return None
-
-        by_date: dict[str, list[float]] = {}
-        for r in rows:
-            try:
-                measured_dt = dt.fromisoformat(str(r.get("measured_at")).replace("Z", "+00:00"))
-            except Exception:
-                continue
-            date_key = _fmt_date(measured_dt)
-            val = r.get("value_c")
-            if val is not None:
-                by_date.setdefault(date_key, []).append(float(val))
-
-        values, labels = [], []
-        for i in range(7):
-            day = now - timedelta(days=6 - i)
-            day_vals = by_date.get(_fmt_date(day), [])
-            avg_day_val = round(sum(day_vals) / len(day_vals), 1) if day_vals else 0.0
-            values.append(avg_day_val)
-            labels.append(_WEEKDAY_ABBR[day.weekday()])
-
-        non_zero = [v for v in values if v > 0]
-        if not non_zero:
-            return None
-
-        all_vals = [float(r["value_c"]) for r in rows if r.get("value_c") is not None]
-        return {
-            "type": "temperature_trend",
-            "data": {
-                "avg": round(sum(non_zero) / len(non_zero), 1),
-                "min": min(all_vals) if all_vals else 0.0,
-                "max": max(all_vals) if all_vals else 0.0,
-                "unit": "°C",
-                "values": values,
-                "labels": labels,
-            }
-        }
-    except Exception as e:
-        print(f"Error fetching temperature card data: {e}")
-        return None
 
 async def get_stress_card_data(user_id: str) -> Optional[dict[str, Any]]:
-    if not user_id or user_id == "anonymous":
-        return None
-    try:
-        now = dt.utcnow()
-        cutoff_str = _fmt_date(now - timedelta(days=6))
+    return await _reading_trend_card(user_id, "user_stress", "stress_value", "stress_trend", "", None)
 
-        def _query():
-            return supabase.table("user_stress").select("*").eq("user_id", user_id)\
-                .gte("measured_at", cutoff_str)\
-                .order("measured_at", desc=False).execute()
-
-        result = await asyncio.to_thread(_query)
-        rows = result.data or []
-        if not rows:
-            return None
-
-        by_date: dict[str, list[int]] = {}
-        for r in rows:
-            try:
-                measured_dt = dt.fromisoformat(str(r.get("measured_at")).replace("Z", "+00:00"))
-            except Exception:
-                continue
-            date_key = _fmt_date(measured_dt)
-            val = r.get("stress_value")
-            if val is not None:
-                by_date.setdefault(date_key, []).append(int(val))
-
-        values, labels = [], []
-        for i in range(7):
-            day = now - timedelta(days=6 - i)
-            day_vals = by_date.get(_fmt_date(day), [])
-            avg_day_val = round(sum(day_vals) / len(day_vals)) if day_vals else 0
-            values.append(avg_day_val)
-            labels.append(_WEEKDAY_ABBR[day.weekday()])
-
-        non_zero = [v for v in values if v > 0]
-        if not non_zero:
-            return None
-
-        all_vals = [int(r["stress_value"]) for r in rows if r.get("stress_value") is not None]
-        return {
-            "type": "stress_trend",
-            "data": {
-                "avg": round(sum(non_zero) / len(non_zero)),
-                "min": min(all_vals) if all_vals else 0,
-                "max": max(all_vals) if all_vals else 0,
-                "unit": "",
-                "values": values,
-                "labels": labels,
-            }
-        }
-    except Exception as e:
-        print(f"Error fetching stress card data: {e}")
-        return None
 
 async def get_cycle_card_data(user_id: str) -> Optional[dict[str, Any]]:
-    demo = {
-        "type": "cycle_trend",
-        "data": {
-            "period_start": "2026-07-17",
-            "cycle_length": 28,
-            "period_length": 5,
-            "current_day": 14,
-            "phase": "Ovulation Window",
-            "days_until_next": 14,
-        }
-    }
-    if not user_id or user_id == "anonymous":
-        return demo
+    if not _has_user(user_id):
+        return None
     try:
         def _query():
             return supabase.table("user_cycles").select("*").eq("user_id", user_id)\
@@ -582,42 +355,33 @@ async def get_cycle_card_data(user_id: str) -> Optional[dict[str, Any]]:
 
         result = await asyncio.to_thread(_query)
         rows = result.data or []
-        if not rows:
-            return demo
+        if not rows or not rows[0].get("period_start"):
+            return None
 
         c = rows[0]
-        p_start_str = c.get("period_start")
-        cycle_len = c.get("cycle_length") or 28
-        period_len = c.get("period_length") or 5
+        p_start_str = str(c["period_start"])[:10]
+        cycle_len = _num(c.get("cycle_length"))
+        period_len = _num(c.get("period_length"))
 
-        current_day = 1
-        days_until_next = cycle_len
-        phase = "Follicular Phase"
-
-        if p_start_str:
-            try:
-                p_start_dt = dt.strptime(p_start_str, "%Y-%m-%d")
-                today = dt.utcnow().date()
-                delta_days = (today - p_start_dt.date()).days
-                if delta_days >= 0:
-                    current_day = (delta_days % cycle_len) + 1
-                    days_until_next = cycle_len - (delta_days % cycle_len)
-
-                    if current_day <= period_len:
-                        phase = "Menstrual Phase"
-                    elif current_day <= 13:
-                        phase = "Follicular Phase"
-                    elif current_day <= 16:
-                        phase = "Ovulation Window"
-                    else:
-                        phase = "Luteal Phase"
-            except Exception:
-                pass
+        # Derived fields only when the logged values allow them; no assumed 28/5-day defaults.
+        current_day = days_until_next = phase = None
+        delta_days = (dt.utcnow().date() - dt.strptime(p_start_str, "%Y-%m-%d").date()).days
+        if cycle_len and delta_days >= 0:
+            current_day = (delta_days % cycle_len) + 1
+            days_until_next = cycle_len - (delta_days % cycle_len)
+            if period_len and current_day <= period_len:
+                phase = "Menstrual Phase"
+            elif current_day <= 13:
+                phase = "Follicular Phase"
+            elif current_day <= 16:
+                phase = "Ovulation Window"
+            else:
+                phase = "Luteal Phase"
 
         return {
             "type": "cycle_trend",
             "data": {
-                "period_start": p_start_str or "Unknown",
+                "period_start": p_start_str,
                 "cycle_length": cycle_len,
                 "period_length": period_len,
                 "current_day": current_day,
@@ -627,7 +391,8 @@ async def get_cycle_card_data(user_id: str) -> Optional[dict[str, Any]]:
         }
     except Exception as e:
         print(f"Error fetching cycle card data: {e}")
-        return demo
+        return None
+
 
 async def run_agent(message: str, user_id: str) -> tuple[str, Optional[dict[str, Any]]]:
     try:
