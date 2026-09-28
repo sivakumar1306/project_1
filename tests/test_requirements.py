@@ -15,6 +15,7 @@ DIST = {
     "dotenv": "python-dotenv", "sklearn": "scikit-learn", "yaml": "pyyaml", "jwt": "pyjwt",
     "langchain_core": "langchain-core", "langchain_groq": "langchain-groq",
     "langchain_mistralai": "langchain-mistralai", "sentence_transformers": "sentence-transformers",
+    "PIL": "pillow", "pptx": "python-pptx",
 }
 # Imported only inside a guarded fallback branch (third-choice LLM provider in
 # agent/graph.py::get_medxai_llm); not required for the default Groq / Mistral setup.
