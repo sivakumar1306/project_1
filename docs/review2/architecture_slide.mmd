@@ -1,0 +1,36 @@
+%%{init: {"themeVariables": {"fontSize": "22px"}}}%%
+%% Condensed slide version of the diagram in docs/ARCHITECTURE.md (same pipeline, short labels).
+%% Render: mmdc -i docs/review2/architecture_slide.mmd -o docs/review2/architecture_slide.png -s 3 -b white
+flowchart LR
+    ring["Smart ring / phone<br/>vitals + fall detector"] --> sb[("Supabase<br/>daily vitals ·<br/>fall events")]
+    user["User message"] --> par
+
+    subgraph par["① In parallel"]
+        direction TB
+        router["Router<br/>confidence +<br/>safety widening"]
+        llm["LLM safety<br/>classifier"]
+        bio["Ring fall event<br/>in last 30 min"]
+    end
+    sb --> bio
+    kw["Keyword +<br/>guarded fall<br/>patterns"]
+
+    llm --> fusion{"② Tri-modal<br/>safety fusion"}
+    bio --> fusion
+    kw --> fusion
+    fusion -- "emergency" --> em["EMERGENCY<br/>reply"]
+    fusion -- "safe" --> fetch["③ Selective<br/>fetch"]
+    router -- "streams" --> fetch
+
+    sb --> engine["④ Deterministic<br/>fall-risk engine<br/>FRS · tier · Q ·<br/>contributors"]
+    fetch --> engine
+    engine -- "numbers" --> gen["⑤ LLM explains<br/>facts → rationale<br/>→ action"]
+    gen --> check{"⑥ Every number<br/>in PATIENT DATA?"}
+    check -- "yes" --> reply["Reply +<br/>fall-risk card"]
+    check -- "no" --> fix["One corrective<br/>regeneration"] --> reply
+
+    classDef engine fill:#1D2F82,color:#FFFFFF,stroke:#1D2F82
+    classDef safety fill:#FDECEC,stroke:#B00020,color:#000000
+    classDef llmc fill:#EEF1FA,stroke:#1D2F82,color:#000000
+    class engine engine
+    class fusion,bio,em safety
+    class gen,check,fix llmc
