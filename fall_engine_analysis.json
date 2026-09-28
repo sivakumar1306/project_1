@@ -1,0 +1,1135 @@
+{
+  "date": "2026-09-27",
+  "weights": {
+    "Fall history": {
+      "ratio": 2.8,
+      "ln": 1.03,
+      "weight": 0.402
+    },
+    "Motion": {
+      "ratio": 2.1,
+      "ln": 0.742,
+      "weight": 0.29
+    },
+    "Physiology": {
+      "ratio": 1.73,
+      "ln": 0.548,
+      "weight": 0.214
+    },
+    "Recovery": {
+      "ratio": 1.27,
+      "ln": 0.239,
+      "weight": 0.093
+    }
+  },
+  "users": {
+    "Arun (low risk)": {
+      "frs": 6,
+      "tier": "LOW",
+      "coverage_q": 100,
+      "stale": false,
+      "layers": {
+        "Physiology": 5.0,
+        "Recovery": 0.1,
+        "Motion": 18.0,
+        "Fall history": 0.0
+      },
+      "top_contributors": [
+        {
+          "label": "daily steps",
+          "points": 5.2
+        },
+        {
+          "label": "SpO2",
+          "points": 1.1
+        },
+        {
+          "label": "stress level",
+          "points": 0.0
+        },
+        {
+          "label": "HRV",
+          "points": 0.0
+        }
+      ],
+      "cycle": null,
+      "correlations": [
+        {
+          "pair": "sleep_min->hrv",
+          "r": 0.85,
+          "n": 35
+        },
+        {
+          "pair": "stress->rhr",
+          "r": 0.53,
+          "n": 35
+        }
+      ],
+      "series": [
+        {
+          "date": "2026-09-07",
+          "frs": 2,
+          "physiology_risk": 8.644664778092523,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-08",
+          "frs": 0,
+          "physiology_risk": 0.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-09",
+          "frs": 1,
+          "physiology_risk": 0.34445493652292497,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-10",
+          "frs": 0,
+          "physiology_risk": 0.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-11",
+          "frs": 15,
+          "physiology_risk": 9.564305949008702,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-12",
+          "frs": 4,
+          "physiology_risk": 19.847655020459555,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-13",
+          "frs": 17,
+          "physiology_risk": 6.003588290840433,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-14",
+          "frs": 4,
+          "physiology_risk": 15.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-15",
+          "frs": 6,
+          "physiology_risk": 16.885741265344667,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-16",
+          "frs": 1,
+          "physiology_risk": 5.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-17",
+          "frs": 5,
+          "physiology_risk": 7.7839471199247825,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-18",
+          "frs": 16,
+          "physiology_risk": 5.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-19",
+          "frs": 1,
+          "physiology_risk": 5.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-20",
+          "frs": 4,
+          "physiology_risk": 15.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-21",
+          "frs": 2,
+          "physiology_risk": 9.109537299339,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-22",
+          "frs": 1,
+          "physiology_risk": 2.442870632672333,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-23",
+          "frs": 0,
+          "physiology_risk": 0.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-24",
+          "frs": 5,
+          "physiology_risk": 8.333333333333332,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-25",
+          "frs": 11,
+          "physiology_risk": 6.666666666666666,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-26",
+          "frs": 8,
+          "physiology_risk": 1.4999999999997442,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-27",
+          "frs": 6,
+          "physiology_risk": 5.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        }
+      ]
+    },
+    "Meera (luteal + poor recovery)": {
+      "frs": 47,
+      "tier": "MODERATE",
+      "coverage_q": 100,
+      "stale": false,
+      "layers": {
+        "Physiology": 61.7,
+        "Recovery": 100.0,
+        "Motion": 0.0,
+        "Fall history": 60.0
+      },
+      "top_contributors": [
+        {
+          "label": "falls in past 365 days",
+          "points": 24.1
+        },
+        {
+          "label": "HRV",
+          "points": 7.5
+        },
+        {
+          "label": "resting heart rate",
+          "points": 4.6
+        },
+        {
+          "label": "sleep duration",
+          "points": 3.7
+        }
+      ],
+      "cycle": {
+        "phase": "luteal",
+        "cycle_day": 23,
+        "cycle_length": 28,
+        "applied": true,
+        "frs_without_correction": 48,
+        "physiology_risk_without_correction": 68.25436886060125
+      },
+      "correlations": [
+        {
+          "pair": "sleep_min->hrv",
+          "r": 0.86,
+          "n": 35
+        },
+        {
+          "pair": "stress->sleep_score",
+          "r": -0.69,
+          "n": 34
+        },
+        {
+          "pair": "stress->rhr",
+          "r": 0.64,
+          "n": 35
+        }
+      ],
+      "series": [
+        {
+          "date": "2026-09-07",
+          "frs": 27,
+          "physiology_risk": 5.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "menstrual"
+        },
+        {
+          "date": "2026-09-08",
+          "frs": 30,
+          "physiology_risk": 5.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "menstrual"
+        },
+        {
+          "date": "2026-09-09",
+          "frs": 30,
+          "physiology_risk": 0.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "menstrual"
+        },
+        {
+          "date": "2026-09-10",
+          "frs": 26,
+          "physiology_risk": 5.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "follicular"
+        },
+        {
+          "date": "2026-09-11",
+          "frs": 26,
+          "physiology_risk": 0.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "follicular"
+        },
+        {
+          "date": "2026-09-12",
+          "frs": 26,
+          "physiology_risk": 5.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "follicular"
+        },
+        {
+          "date": "2026-09-13",
+          "frs": 28,
+          "physiology_risk": 4.666666666666667,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "follicular"
+        },
+        {
+          "date": "2026-09-14",
+          "frs": 27,
+          "physiology_risk": 2.3333333333333326,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "follicular"
+        },
+        {
+          "date": "2026-09-15",
+          "frs": 29,
+          "physiology_risk": 0.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "follicular"
+        },
+        {
+          "date": "2026-09-16",
+          "frs": 25,
+          "physiology_risk": 1.6666666666666663,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "follicular"
+        },
+        {
+          "date": "2026-09-17",
+          "frs": 29,
+          "physiology_risk": 5.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "ovulatory"
+        },
+        {
+          "date": "2026-09-18",
+          "frs": 24,
+          "physiology_risk": 0.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "ovulatory"
+        },
+        {
+          "date": "2026-09-19",
+          "frs": 32,
+          "physiology_risk": 7.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "ovulatory"
+        },
+        {
+          "date": "2026-09-20",
+          "frs": 26,
+          "physiology_risk": 7.799999999999984,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "luteal"
+        },
+        {
+          "date": "2026-09-21",
+          "frs": 25,
+          "physiology_risk": 2.866666666666683,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "luteal"
+        },
+        {
+          "date": "2026-09-22",
+          "frs": 33,
+          "physiology_risk": 22.781349366942305,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "luteal"
+        },
+        {
+          "date": "2026-09-23",
+          "frs": 30,
+          "physiology_risk": 23.999999999999996,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "luteal"
+        },
+        {
+          "date": "2026-09-24",
+          "frs": 28,
+          "physiology_risk": 0.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "luteal"
+        },
+        {
+          "date": "2026-09-25",
+          "frs": 49,
+          "physiology_risk": 63.359484303636414,
+          "tier": "MODERATE",
+          "coverage_q": 100,
+          "phase": "luteal"
+        },
+        {
+          "date": "2026-09-26",
+          "frs": 46,
+          "physiology_risk": 60.0,
+          "tier": "MODERATE",
+          "coverage_q": 100,
+          "phase": "luteal"
+        },
+        {
+          "date": "2026-09-27",
+          "frs": 47,
+          "physiology_risk": 61.666666666666664,
+          "tier": "MODERATE",
+          "coverage_q": 100,
+          "phase": "luteal"
+        }
+      ]
+    },
+    "Ravi (stale data)": {
+      "frs": 3,
+      "tier": "LOW",
+      "coverage_q": 70,
+      "stale": true,
+      "layers": {
+        "Physiology": 6.2,
+        "Recovery": 12.6,
+        "Motion": 0.0,
+        "Fall history": 0.0
+      },
+      "top_contributors": [
+        {
+          "label": "HRV",
+          "points": 1.3
+        },
+        {
+          "label": "sleep duration",
+          "points": 1.2
+        },
+        {
+          "label": "resting heart rate",
+          "points": 0.0
+        },
+        {
+          "label": "SpO2",
+          "points": 0.0
+        }
+      ],
+      "cycle": null,
+      "correlations": [
+        {
+          "pair": "sleep_min->hrv",
+          "r": 0.91,
+          "n": 31
+        },
+        {
+          "pair": "stress->rhr",
+          "r": 0.71,
+          "n": 31
+        }
+      ],
+      "series": [
+        {
+          "date": "2026-09-07",
+          "frs": 1,
+          "physiology_risk": 1.6666666666666663,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-08",
+          "frs": 7,
+          "physiology_risk": 26.00000000000034,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-09",
+          "frs": 8,
+          "physiology_risk": 13.33333333333333,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-10",
+          "frs": 9,
+          "physiology_risk": 8.333333333333332,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-11",
+          "frs": 0,
+          "physiology_risk": 0.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-12",
+          "frs": 2,
+          "physiology_risk": 2.13547628683213,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-13",
+          "frs": 1,
+          "physiology_risk": 5.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-14",
+          "frs": 0,
+          "physiology_risk": 1.6666666666666663,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-15",
+          "frs": 1,
+          "physiology_risk": 6.200000000000017,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-16",
+          "frs": 11,
+          "physiology_risk": 6.666666666666666,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-17",
+          "frs": 0,
+          "physiology_risk": 0.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-18",
+          "frs": 13,
+          "physiology_risk": 8.333333333333332,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-19",
+          "frs": 2,
+          "physiology_risk": 8.333333333333332,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-20",
+          "frs": 0,
+          "physiology_risk": 0.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-21",
+          "frs": 2,
+          "physiology_risk": 8.933333333333128,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-22",
+          "frs": 1,
+          "physiology_risk": 5.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-23",
+          "frs": 3,
+          "physiology_risk": 6.220018885741267,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-24",
+          "frs": 3,
+          "physiology_risk": 6.220018885741267,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-25",
+          "frs": 3,
+          "physiology_risk": 6.220018885741267,
+          "tier": "LOW",
+          "coverage_q": 90,
+          "phase": null
+        },
+        {
+          "date": "2026-09-26",
+          "frs": 3,
+          "physiology_risk": 6.220018885741267,
+          "tier": "LOW",
+          "coverage_q": 80,
+          "phase": null
+        },
+        {
+          "date": "2026-09-27",
+          "frs": 3,
+          "physiology_risk": 6.220018885741267,
+          "tier": "LOW",
+          "coverage_q": 70,
+          "phase": null
+        }
+      ]
+    },
+    "Lakshmi (recent fall)": {
+      "frs": 71,
+      "tier": "HIGH",
+      "coverage_q": 100,
+      "stale": false,
+      "layers": {
+        "Physiology": 42.3,
+        "Recovery": 52.0,
+        "Motion": 59.5,
+        "Fall history": 100.0
+      },
+      "top_contributors": [
+        {
+          "label": "falls in past 365 days",
+          "points": 40.2
+        },
+        {
+          "label": "near-fall events (14 days)",
+          "points": 14.5
+        },
+        {
+          "label": "SpO2",
+          "points": 5.4
+        },
+        {
+          "label": "HRV",
+          "points": 3.7
+        }
+      ],
+      "cycle": null,
+      "correlations": [
+        {
+          "pair": "sleep_min->hrv",
+          "r": 0.93,
+          "n": 35
+        },
+        {
+          "pair": "stress->rhr",
+          "r": 0.69,
+          "n": 35
+        }
+      ],
+      "series": [
+        {
+          "date": "2026-09-07",
+          "frs": 45,
+          "physiology_risk": 9.187778227438285,
+          "tier": "MODERATE",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-08",
+          "frs": 42,
+          "physiology_risk": 0.0,
+          "tier": "MODERATE",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-09",
+          "frs": 49,
+          "physiology_risk": 18.78370430325132,
+          "tier": "MODERATE",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-10",
+          "frs": 41,
+          "physiology_risk": 5.0,
+          "tier": "MODERATE",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-11",
+          "frs": 42,
+          "physiology_risk": 5.0,
+          "tier": "MODERATE",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-12",
+          "frs": 44,
+          "physiology_risk": 9.564305949008277,
+          "tier": "MODERATE",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-13",
+          "frs": 41,
+          "physiology_risk": 0.0,
+          "tier": "MODERATE",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-14",
+          "frs": 48,
+          "physiology_risk": 0.0,
+          "tier": "MODERATE",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-15",
+          "frs": 40,
+          "physiology_risk": 0.0,
+          "tier": "MODERATE",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-16",
+          "frs": 40,
+          "physiology_risk": 0.08215297450425041,
+          "tier": "MODERATE",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-17",
+          "frs": 41,
+          "physiology_risk": 0.0,
+          "tier": "MODERATE",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-18",
+          "frs": 49,
+          "physiology_risk": 1.6666666666666663,
+          "tier": "MODERATE",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-19",
+          "frs": 47,
+          "physiology_risk": 0.0,
+          "tier": "MODERATE",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-20",
+          "frs": 48,
+          "physiology_risk": 0.0,
+          "tier": "MODERATE",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-21",
+          "frs": 51,
+          "physiology_risk": 4.016682404784388,
+          "tier": "MODERATE",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-22",
+          "frs": 56,
+          "physiology_risk": 0.0,
+          "tier": "MODERATE",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-23",
+          "frs": 50,
+          "physiology_risk": 10.31192949323261,
+          "tier": "MODERATE",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-24",
+          "frs": 63,
+          "physiology_risk": 18.330500472143534,
+          "tier": "MODERATE",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-25",
+          "frs": 65,
+          "physiology_risk": 26.328611898017,
+          "tier": "MODERATE",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-26",
+          "frs": 83,
+          "physiology_risk": 64.63814919735609,
+          "tier": "HIGH",
+          "coverage_q": 100,
+          "phase": null
+        },
+        {
+          "date": "2026-09-27",
+          "frs": 71,
+          "physiology_risk": 42.28166734115743,
+          "tier": "HIGH",
+          "coverage_q": 100,
+          "phase": null
+        }
+      ]
+    },
+    "Priya (healthy luteal)": {
+      "frs": 4,
+      "tier": "LOW",
+      "coverage_q": 100,
+      "stale": false,
+      "layers": {
+        "Physiology": 11.7,
+        "Recovery": 12.5,
+        "Motion": 0.0,
+        "Fall history": 0.0
+      },
+      "top_contributors": [
+        {
+          "label": "HRV",
+          "points": 2.5
+        },
+        {
+          "label": "sleep score",
+          "points": 0.8
+        },
+        {
+          "label": "sleep duration",
+          "points": 0.4
+        },
+        {
+          "label": "resting heart rate",
+          "points": 0.0
+        }
+      ],
+      "cycle": {
+        "phase": "luteal",
+        "cycle_day": 24,
+        "cycle_length": 28,
+        "applied": true,
+        "frs_without_correction": 6,
+        "physiology_risk_without_correction": 21.935242463368848
+      },
+      "correlations": [
+        {
+          "pair": "stress->rhr",
+          "r": 0.5,
+          "n": 35
+        },
+        {
+          "pair": "sleep_min->hrv",
+          "r": 0.46,
+          "n": 35
+        }
+      ],
+      "series": [
+        {
+          "date": "2026-09-07",
+          "frs": 1,
+          "physiology_risk": 0.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "menstrual"
+        },
+        {
+          "date": "2026-09-08",
+          "frs": 0,
+          "physiology_risk": 0.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "menstrual"
+        },
+        {
+          "date": "2026-09-09",
+          "frs": 7,
+          "physiology_risk": 0.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "follicular"
+        },
+        {
+          "date": "2026-09-10",
+          "frs": 0,
+          "physiology_risk": 0.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "follicular"
+        },
+        {
+          "date": "2026-09-11",
+          "frs": 0,
+          "physiology_risk": 0.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "follicular"
+        },
+        {
+          "date": "2026-09-12",
+          "frs": 1,
+          "physiology_risk": 0.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "follicular"
+        },
+        {
+          "date": "2026-09-13",
+          "frs": 1,
+          "physiology_risk": 5.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "follicular"
+        },
+        {
+          "date": "2026-09-14",
+          "frs": 2,
+          "physiology_risk": 8.489815189531905,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "follicular"
+        },
+        {
+          "date": "2026-09-15",
+          "frs": 0,
+          "physiology_risk": 0.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "follicular"
+        },
+        {
+          "date": "2026-09-16",
+          "frs": 0,
+          "physiology_risk": 1.6666666666666663,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "ovulatory"
+        },
+        {
+          "date": "2026-09-17",
+          "frs": 2,
+          "physiology_risk": 0.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "ovulatory"
+        },
+        {
+          "date": "2026-09-18",
+          "frs": 5,
+          "physiology_risk": 0.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "ovulatory"
+        },
+        {
+          "date": "2026-09-19",
+          "frs": 1,
+          "physiology_risk": 4.1999999999998465,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "luteal"
+        },
+        {
+          "date": "2026-09-20",
+          "frs": 0,
+          "physiology_risk": 0.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "luteal"
+        },
+        {
+          "date": "2026-09-21",
+          "frs": 8,
+          "physiology_risk": 37.73333333333311,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "luteal"
+        },
+        {
+          "date": "2026-09-22",
+          "frs": 2,
+          "physiology_risk": 7.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "luteal"
+        },
+        {
+          "date": "2026-09-23",
+          "frs": 1,
+          "physiology_risk": 1.6666666666666663,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "luteal"
+        },
+        {
+          "date": "2026-09-24",
+          "frs": 1,
+          "physiology_risk": 6.600000000000222,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "luteal"
+        },
+        {
+          "date": "2026-09-25",
+          "frs": 6,
+          "physiology_risk": 21.0,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "luteal"
+        },
+        {
+          "date": "2026-09-26",
+          "frs": 0,
+          "physiology_risk": 2.3333333333333326,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "luteal"
+        },
+        {
+          "date": "2026-09-27",
+          "frs": 4,
+          "physiology_risk": 11.666666666666664,
+          "tier": "LOW",
+          "coverage_q": 100,
+          "phase": "luteal"
+        }
+      ]
+    }
+  },
+  "cycle_ablation": {
+    "Priya (healthy luteal)": {
+      "normal_luteal_days": 9,
+      "mean_physio_risk_with_correction": 10.2,
+      "mean_physio_risk_without_correction": 18.1,
+      "reduction_pct": 43.4,
+      "days_flagged_ge_30_with": 1,
+      "days_flagged_ge_30_without": 1,
+      "acute_days_with_correction": []
+    },
+    "Meera (luteal + poor recovery)": {
+      "normal_luteal_days": 5,
+      "mean_physio_risk_with_correction": 11.5,
+      "mean_physio_risk_without_correction": 19.3,
+      "reduction_pct": 40.4,
+      "days_flagged_ge_30_with": 0,
+      "days_flagged_ge_30_without": 2,
+      "acute_days_with_correction": [
+        63,
+        60,
+        62
+      ]
+    }
+  }
+}

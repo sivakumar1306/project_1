@@ -1,5 +1,6 @@
 from langchain_core.tools import tool
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+import re
 from zoneinfo import ZoneInfo
 from db.supabase import supabase
 
@@ -54,6 +55,18 @@ async def search_medical_knowledge(query: str) -> str:
 # needed here; left as plain synchronous Supabase calls, matching how @tool
 # functions are meant to be written. (search_medical_knowledge above is the
 # one exception that needed to be async, for the reason explained there.)
+def _fall_risk_context(user_id: str) -> str:
+    try:
+        from agent.fall_risk import get_fall_risk
+        fr = get_fall_risk(user_id)
+        r = fr["result"]
+        if r["latest_data_date"] is None and r["falls_365"] == 0 and r["near_falls_14"] == 0:
+            return "FALL RISK ASSESSMENT: NO ring data found for this user; a fall-risk score cannot be computed."
+        return fr["context"]
+    except Exception as e:
+        print(f"[FALL RISK] context error: {e}")
+        return "FALL RISK ASSESSMENT: unavailable (engine error)."
+
 @tool
 def get_patient_data(user_id: str) -> str:
     """Get the patient's health profile and recent smart ring biometric data. Input should be the user's UUID string."""
@@ -94,6 +107,7 @@ def get_patient_data(user_id: str) -> str:
             f_temp = executor.submit(_fetch_table, "user_temp", "measured_at", 1)
             f_stress = executor.submit(_fetch_table, "user_stress", "measured_at", 3)
             f_cycles = executor.submit(_fetch_table, "user_cycles", "period_start", 2)
+            f_fall = executor.submit(_fall_risk_context, user_id)
 
             profile = f_profile.result()
             current_hr = f_curr_hr.result()
@@ -204,6 +218,10 @@ PATIENT PROFILE:
                         pass
                 context += f"- Period start: {p_start}, period end: {p_end}, cycle length: {c_len} days, period length: {p_len} days. Currently at {curr_day_str}. Estimated next period: {est_next_str} (in {days_until} days).\n"
 
+        fall_ctx = f_fall.result()
+        if fall_ctx:
+            context += "\n" + fall_ctx + "\n"
+
         result = context.strip() if context else "No biometric or ring data found for this user. The ring is not connected or has not synced readings. Tell the user: Please connect your ring to view analysis."
         print(f"[get_patient_data] user_id={user_id}\n---TOOL OUTPUT SENT TO LLM---\n{result}\n---END TOOL OUTPUT---")
         return result
@@ -265,6 +283,8 @@ def get_patient_data_selective(user_id: str, streams: list[str]) -> str:
                 futures["stress"] = executor.submit(_fetch_table, "user_stress", "measured_at", 3)
             if "cycles" in streams:
                 futures["cycles"] = executor.submit(_fetch_table, "user_cycles", "period_start", 2)
+            if "fall_risk" in streams:
+                futures["fall_risk"] = executor.submit(_fall_risk_context, user_id)
 
             results = {k: f.result() for k, f in futures.items()}
 
@@ -378,6 +398,10 @@ PATIENT PROFILE:
                         pass
                 context += f"- Period start: {p_start}, period end: {p_end}, cycle length: {c_len} days, period length: {p_len} days. Currently at {curr_day_str}. Estimated next period: {est_next_str} (in {days_until} days).\n"
 
+        fall_ctx = results.get("fall_risk")
+        if fall_ctx:
+            context += "\n" + fall_ctx + "\n"
+
         result = context.strip() if context else "No biometric or ring data found for the requested streams."
         print(f"[get_patient_data_selective] user_id={user_id}, streams={streams}")
         return result
@@ -386,18 +410,38 @@ PATIENT PROFILE:
         print(f"[get_patient_data_selective] ERROR for user_id={user_id}: {error_msg}")
         return error_msg
 
+# ── Shared emergency vocabulary (used by baseline keyword check AND fusion) ──
+EMERGENCY_KEYWORDS = [
+    "chest pain", "can't breathe", "cannot breathe", "difficulty breathing",
+    "heart attack", "stroke", "unconscious", "unresponsive", "seizure",
+    "severe bleeding", "overdose", "suicidal", "suicide", "kill myself",
+    "severe headache", "sudden confusion", "face drooping", "arm weakness",
+    "slurred speech", "severe allergic", "anaphylaxis", "stopped breathing",
+    # fall-related (Review-II)
+    "can't get up", "cannot get up", "can not get up", "hit my head", "fainted",
+    "passed out", "blacked out", "fell down",
+]
+# Regex patterns for fall phrases that need guarding against benign uses
+# (e.g. "I fell asleep", "I fell behind").
+FALL_PATTERNS = [
+    (r"\bi (?:just |have |'ve )?(?:fell|fallen|had a fall)\b(?!\s+(?:asleep|behind|for|in love|ill|sick|off track))", "i fell"),
+    (r"\b(?:on|lying on) the (?:\w+ )?floor\b", "on the floor"),
+]
+
+
+def match_emergency_keywords(message: str) -> list[str]:
+    msg_lower = message.lower()
+    hits = [kw for kw in EMERGENCY_KEYWORDS if kw in msg_lower]
+    for pattern, label in FALL_PATTERNS:
+        if re.search(pattern, msg_lower) and label not in hits:
+            hits.append(label)
+    return hits
+
+
 @tool
 def check_emergency(message: str) -> str:
     """Check if the message contains emergency or life-threatening symptoms that require immediate medical attention."""
-    emergency_keywords = [
-        "chest pain", "can't breathe", "cannot breathe", "difficulty breathing",
-        "heart attack", "stroke", "unconscious", "unresponsive", "seizure",
-        "severe bleeding", "overdose", "suicidal", "suicide", "kill myself",
-        "severe headache", "sudden confusion", "face drooping", "arm weakness",
-        "slurred speech", "severe allergic", "anaphylaxis", "stopped breathing"
-    ]
-    msg_lower = message.lower()
-    triggered = [kw for kw in emergency_keywords if kw in msg_lower]
+    triggered = match_emergency_keywords(message)
     if triggered:
         return f"EMERGENCY DETECTED: {', '.join(triggered)}. This requires IMMEDIATE medical attention. Call emergency services (112 in India) or go to the nearest emergency room NOW. Do not wait."
     return "No emergency detected."
@@ -419,7 +463,8 @@ async def check_emergency_llm(message: str) -> tuple[bool, str, float]:
         llm = get_medxai_llm()
 
         sys_prompt = """You are a medical safety emergency triage classifier.
-Evaluate if the user message describes or implies a potential medical emergency (such as heart attack, stroke, severe respiratory distress, acute anaphylaxis, severe head injury, uncontrollable bleeding, or self-harm).
+Evaluate if the user message describes or implies a potential medical emergency (such as heart attack, stroke, severe respiratory distress, acute anaphylaxis, severe head injury, uncontrollable bleeding, self-harm, or a fall with inability to get up, head impact, fainting or loss of consciousness).
+Informational questions about a condition (e.g. "what are the symptoms of a stroke?", "why do older people fall?") and benign phrases (e.g. "I fell asleep") are NOT emergencies.
 
 Output ONLY valid JSON matching this structure:
 {
@@ -455,20 +500,13 @@ Output ONLY valid JSON matching this structure:
     except Exception as e:
         return False, f"LLM emergency check error: {e}", 0.0
 
-def check_emergency_fused(message: str, llm_res: tuple[bool, str, float]) -> tuple[bool, str, dict]:
+def check_emergency_fused(message: str, llm_res: tuple[bool, str, float], biometric_event: dict | None = None) -> tuple[bool, str, dict]:
     """
     Fused safety classification combining deterministic keyword matching with LLM classification.
     Returns (is_emergency: bool, response_text: str, metadata: dict).
     """
-    emergency_keywords = [
-        "chest pain", "can't breathe", "cannot breathe", "difficulty breathing",
-        "heart attack", "stroke", "unconscious", "unresponsive", "seizure",
-        "severe bleeding", "overdose", "suicidal", "suicide", "kill myself",
-        "severe headache", "sudden confusion", "face drooping", "arm weakness",
-        "slurred speech", "severe allergic", "anaphylaxis", "stopped breathing"
-    ]
     msg_lower = message.lower()
-    triggered_kw = [kw for kw in emergency_keywords if kw in msg_lower]
+    triggered_kw = match_emergency_keywords(message)
 
     is_llm_emerg, llm_reason, llm_conf = llm_res
     llm_triggered = is_llm_emerg and llm_conf >= 0.7
@@ -484,7 +522,12 @@ def check_emergency_fused(message: str, llm_res: tuple[bool, str, float]) -> tup
     else:
         effective_kw_triggered = triggered_kw
 
-    is_emergency = bool(effective_kw_triggered) or llm_triggered
+    # Third signal (Review-II): physiological evidence independent of the text.
+    # An uncancelled fall detected by the ring/phone in the last 30 minutes
+    # escalates ANY message, even a calm-sounding one ("I'm fine").
+    biometric_triggered = bool(biometric_event)
+
+    is_emergency = bool(effective_kw_triggered) or llm_triggered or biometric_triggered
 
     meta = {
         "keyword_triggered": triggered_kw,
@@ -492,7 +535,12 @@ def check_emergency_fused(message: str, llm_res: tuple[bool, str, float]) -> tup
         "keyword_overridden": keyword_overridden,
         "llm_triggered": llm_triggered,
         "llm_reason": llm_reason,
-        "llm_confidence": llm_conf
+        "llm_confidence": llm_conf,
+        "biometric_triggered": biometric_triggered,
+        "biometric_event": {
+            "detected_at": biometric_event.get("detected_at"),
+            "peak_g": biometric_event.get("peak_g"),
+        } if biometric_event else None,
     }
 
     if is_emergency:
@@ -501,8 +549,15 @@ def check_emergency_fused(message: str, llm_res: tuple[bool, str, float]) -> tup
             triggers.append(", ".join(effective_kw_triggered))
         if llm_triggered:
             triggers.append(llm_reason)
+        if biometric_triggered:
+            triggers.append(f"a fall was detected by your ring/phone at {_to_ist(biometric_event.get('detected_at'))} and has not been cancelled")
         desc = "; ".join(triggers)
-        response_msg = f"EMERGENCY DETECTED: {desc}. This requires IMMEDIATE medical attention. Call emergency services (112 in India) or go to the nearest emergency room NOW. Do not wait."
+        if biometric_triggered and not effective_kw_triggered and not llm_triggered:
+            response_msg = (f"EMERGENCY DETECTED: {desc}. Even if you feel fine, a fall can cause injuries that are not obvious straight away. "
+                            "If you hit your head, feel dizzy or confused, are in pain, or cannot get up, call emergency services (112 in India) now. "
+                            "If you are safe, cancel the fall alert in the SUNDR app.")
+        else:
+            response_msg = f"EMERGENCY DETECTED: {desc}. This requires IMMEDIATE medical attention. Call emergency services (112 in India) or go to the nearest emergency room NOW. Do not wait."
         return True, response_msg, meta
 
     return False, "No emergency detected.", meta

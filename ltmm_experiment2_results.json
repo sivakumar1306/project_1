@@ -1,0 +1,267 @@
+{
+  "protocol": "pre-registered; 7 models; 20x5 repeated stratified subject-wise CV; permutation test on M4",
+  "n": 73,
+  "models": {
+    "M0": {
+      "name": "v2 Gait Index (untrained)",
+      "auc": 0.6857142857142857,
+      "sd": 0.0,
+      "ci95": [
+        0.5608948507632718,
+        0.8076984126984127
+      ],
+      "trained": false
+    },
+    "M1": {
+      "name": "v3 Index: gait + turns (untrained)",
+      "auc": 0.6338345864661654,
+      "sd": 0.0,
+      "ci95": [
+        0.5077501518236702,
+        0.7606142876731111
+      ],
+      "trained": false
+    },
+    "M2": {
+      "name": "LogReg: v2 features",
+      "auc": 0.7208646616541353,
+      "sd": 0.019435581209430976,
+      "trained": true,
+      "features": [
+        "cadence",
+        "stride_time_cv",
+        "step_regularity",
+        "stride_regularity",
+        "harmonic_ratio_ap"
+      ]
+    },
+    "M3": {
+      "name": "LogReg: v3 gait + turns (k=8)",
+      "auc": 0.6610150375939849,
+      "sd": 0.030155227142392275,
+      "trained": true,
+      "features": [
+        "cadence",
+        "stride_time_cv",
+        "step_regularity",
+        "stride_regularity",
+        "harmonic_ratio_ap",
+        "step_asymmetry_pct",
+        "jerk_v_norm",
+        "jerk_ap_norm",
+        "spectral_entropy_v",
+        "spectral_entropy_ml",
+        "corr_v_ap",
+        "rms_v_g",
+        "ml_rms_ratio",
+        "turn_duration_s",
+        "turn_peak_velocity",
+        "steps_per_180",
+        "turn_count"
+      ]
+    },
+    "M4": {
+      "name": "LogReg: v3 + age + sex (k=8) [primary]",
+      "auc": 0.6512406015037594,
+      "sd": 0.031120258970665178,
+      "trained": true,
+      "features": [
+        "cadence",
+        "stride_time_cv",
+        "step_regularity",
+        "stride_regularity",
+        "harmonic_ratio_ap",
+        "step_asymmetry_pct",
+        "jerk_v_norm",
+        "jerk_ap_norm",
+        "spectral_entropy_v",
+        "spectral_entropy_ml",
+        "corr_v_ap",
+        "rms_v_g",
+        "ml_rms_ratio",
+        "turn_duration_s",
+        "turn_peak_velocity",
+        "steps_per_180",
+        "turn_count",
+        "age",
+        "sex_female"
+      ],
+      "permutation": {
+        "auc_single_cv": 0.676530612244898,
+        "p_value": 0.029850746268656716,
+        "null_mean": 0.5112576530612245,
+        "null_95th": 0.6602040816326531
+      }
+    },
+    "M5": {
+      "name": "RandomForest: v3 gait + turns",
+      "auc": 0.5927067669172932,
+      "sd": 0.02254523533663365,
+      "trained": true,
+      "features": [
+        "cadence",
+        "stride_time_cv",
+        "step_regularity",
+        "stride_regularity",
+        "harmonic_ratio_ap",
+        "step_asymmetry_pct",
+        "jerk_v_norm",
+        "jerk_ap_norm",
+        "spectral_entropy_v",
+        "spectral_entropy_ml",
+        "corr_v_ap",
+        "rms_v_g",
+        "ml_rms_ratio",
+        "turn_duration_s",
+        "turn_peak_velocity",
+        "steps_per_180",
+        "turn_count"
+      ]
+    },
+    "M6": {
+      "name": "RandomForest: v3 + age + sex",
+      "auc": 0.5856390977443608,
+      "sd": 0.025508453781324728,
+      "trained": true,
+      "features": [
+        "cadence",
+        "stride_time_cv",
+        "step_regularity",
+        "stride_regularity",
+        "harmonic_ratio_ap",
+        "step_asymmetry_pct",
+        "jerk_v_norm",
+        "jerk_ap_norm",
+        "spectral_entropy_v",
+        "spectral_entropy_ml",
+        "corr_v_ap",
+        "rms_v_g",
+        "ml_rms_ratio",
+        "turn_duration_s",
+        "turn_peak_velocity",
+        "steps_per_180",
+        "turn_count",
+        "age",
+        "sex_female"
+      ]
+    }
+  },
+  "univariate": {
+    "cadence": {
+      "auc": 0.7695488721804511,
+      "median_fallers": 107.14285714285714,
+      "median_nonfallers": 115.38461538461539
+    },
+    "stride_time_cv": {
+      "auc": 0.4917293233082707,
+      "median_fallers": 3.004051885866234,
+      "median_nonfallers": 2.9459888127682436
+    },
+    "step_regularity": {
+      "auc": 0.6473684210526316,
+      "median_fallers": 0.7640678191316617,
+      "median_nonfallers": 0.81822857216335
+    },
+    "stride_regularity": {
+      "auc": 0.5691729323308271,
+      "median_fallers": 0.8139160992789304,
+      "median_nonfallers": 0.8281405073410772
+    },
+    "harmonic_ratio_ap": {
+      "auc": 0.6451127819548872,
+      "median_fallers": 2.7743277035001097,
+      "median_nonfallers": 3.6583090740615765
+    },
+    "step_asymmetry_pct": {
+      "auc": 0.46165413533834593,
+      "median_fallers": 7.38236122851508,
+      "median_nonfallers": 7.7868478784649655
+    },
+    "jerk_v_norm": {
+      "auc": 0.5699248120300752,
+      "median_fallers": 28.71117551391916,
+      "median_nonfallers": 27.76163054280483
+    },
+    "jerk_ap_norm": {
+      "auc": 0.40827067669172934,
+      "median_fallers": 27.410784259531166,
+      "median_nonfallers": 29.662644125527045
+    },
+    "spectral_entropy_v": {
+      "auc": 0.6203007518796991,
+      "median_fallers": 0.6198335785327443,
+      "median_nonfallers": 0.6181575999497757
+    },
+    "spectral_entropy_ml": {
+      "auc": 0.4030075187969925,
+      "median_fallers": 0.7518923862430033,
+      "median_nonfallers": 0.774962556870995
+    },
+    "corr_v_ap": {
+      "auc": 0.6015037593984962,
+      "median_fallers": -0.3167808927809037,
+      "median_nonfallers": -0.4128348814257805
+    },
+    "rms_v_g": {
+      "auc": 0.36165413533834584,
+      "median_fallers": 0.19276977731026546,
+      "median_nonfallers": 0.20513822992986291
+    },
+    "ml_rms_ratio": {
+      "auc": 0.549624060150376,
+      "median_fallers": 0.6050979611657588,
+      "median_nonfallers": 0.5885098207419182
+    },
+    "turn_duration_s": {
+      "auc": 0.5445046439628483,
+      "median_fallers": 2.038333333333333,
+      "median_nonfallers": 1.93
+    },
+    "turn_peak_velocity": {
+      "auc": 0.5975232198142415,
+      "median_fallers": 117.14514674812261,
+      "median_nonfallers": 131.4776281016156
+    },
+    "steps_per_180": {
+      "auc": 0.4907120743034056,
+      "median_fallers": 4.161115429498753,
+      "median_nonfallers": 4.240772645376305
+    },
+    "turn_count": {
+      "auc": 0.5665413533834587,
+      "median_fallers": 2.0,
+      "median_nonfallers": 1.0
+    },
+    "age": {
+      "auc": 0.4673060156931125,
+      "median_fallers": 78.23682409308692,
+      "median_nonfallers": 77.81245722108144
+    },
+    "sex_female": {
+      "auc": 0.5067911714770799,
+      "median_fallers": 1.0,
+      "median_nonfallers": 1.0
+    }
+  },
+  "m4_selection_frequency": {
+    "cadence": 1.0,
+    "rms_v_g": 1.0,
+    "spectral_entropy_v": 0.9,
+    "harmonic_ratio_ap": 0.85,
+    "stride_regularity": 0.7,
+    "step_regularity": 0.64,
+    "jerk_ap_norm": 0.63,
+    "turn_peak_velocity": 0.6,
+    "spectral_entropy_ml": 0.59,
+    "corr_v_ap": 0.52,
+    "jerk_v_norm": 0.17,
+    "age": 0.12,
+    "step_asymmetry_pct": 0.07,
+    "turn_duration_s": 0.06,
+    "ml_rms_ratio": 0.05,
+    "turn_count": 0.05,
+    "stride_time_cv": 0.03,
+    "steps_per_180": 0.01,
+    "sex_female": 0.01
+  }
+}

@@ -17,8 +17,8 @@ if hasattr(sys.stdout, "reconfigure"):
 
 from agent.graph import run_agent_v2
 
-TEST_USER_ID = "00000000-0000-0000-0000-000000000000"
-TOTAL_BASELINE_STREAMS = 11
+TEST_USER_ID = "11111111-1111-4111-8111-000000000002"
+TOTAL_BASELINE_STREAMS = 12
 
 USE_COLOR = True
 try:
@@ -134,6 +134,8 @@ def format_demo_output(query: str, reply: str, card: dict, meta: dict, width: in
         kw_trig = safety_meta.get("keyword_triggered", [])
         llm_reason = safety_meta.get("llm_reason", "")
         step1_lines.append(f"Triggers:              Keywords={kw_trig} | Reason={llm_reason}")
+        if safety_meta.get("biometric_triggered"):
+            step1_lines.append(f"Biometric Signal:      {clr('Uncancelled fall detected by ring/phone', 'red')}")
         print_box(f"STEP 1: ROUTING & SAFETY (INSTANT EMERGENCY SHORT-CIRCUIT)", step1_lines, width=width, border_color="red")
     else:
         step1_lines.append(f"Router decision:       LLM Classification -> Stream Keys {streams}")
@@ -145,7 +147,11 @@ def format_demo_output(query: str, reply: str, card: dict, meta: dict, width: in
         conf = safety_meta.get("llm_confidence", 0.0)
         status_str = clr("Cleared", "green") if not is_emerg else clr("Triggered", "red")
         
-        step1_lines.append(f"Emergency Check:       {kw_str} | LLM={llm_trig} (Conf: {conf:.2f}) -> {status_str}")
+        step1_lines.append(f"Emergency Check:       {kw_str} | LLM={llm_trig} (Conf: {conf:.2f}) | Biometric={safety_meta.get('biometric_triggered', False)} -> {status_str}")
+        rm = meta.get("router_meta", {})
+        if rm:
+            widened = clr("WIDENED toward safety streams", "yellow") if rm.get("widened") else "not needed"
+            step1_lines.append(f"Router Confidence:     {rm.get('confidence')} | Safety-relevant={rm.get('safety_relevant')} | Widening: {widened}")
 
         kw_overridden = safety_meta.get("keyword_overridden", False)
         if kw_overridden:
@@ -171,6 +177,14 @@ def format_demo_output(query: str, reply: str, card: dict, meta: dict, width: in
             score_str = clr(f"{score_val:.2f} (WARNING: Ungrounded numbers: {ungrounded})", "red")
             
         step2_lines.append(f"Grounding Score:       {score_str}")
+        sv = meta.get("self_verification", {})
+        if sv.get("triggered"):
+            before = sv.get("score_before", 0.0)
+            after = sv.get("score_after", 0.0)
+            sv_text = f"FIRED: strict grounding {before:.2f} -> {after:.2f}"
+            step2_lines.append(f"Self-Verification:     {clr(sv_text, 'yellow')}")
+        else:
+            step2_lines.append(f"Self-Verification:     {clr('Passed first time (no correction needed)', 'green')}")
 
         if facts:
             step2_lines.append("Facts:")
@@ -213,12 +227,33 @@ async def main():
     print(clr("  * Real-Time Numerical Grounding Verification Engine & Dynamic Cards", "dim"))
     print(clr("  Type 'exit' or 'q' to quit.\n", "dim"))
 
+    global TEST_USER_ID
+    demo_users = {
+        "arun": "11111111-1111-4111-8111-000000000001",
+        "meera": "11111111-1111-4111-8111-000000000002",
+        "ravi": "11111111-1111-4111-8111-000000000003",
+        "lakshmi": "11111111-1111-4111-8111-000000000004",
+        "priya": "11111111-1111-4111-8111-000000000005",
+    }
+    current_name = next((n for n, i in demo_users.items() if i == TEST_USER_ID), "custom")
+    print(clr(f"  Active user: {current_name}. Switch with /user <arun|meera|ravi|lakshmi|priya>\n", "dim"))
+
     while True:
         try:
-            user_input = input(clr("[Enter Health Question] > ", "bold")).strip()
+            user_input = input(clr(f"[{current_name}] Enter Health Question > ", "bold")).strip()
             if not user_input or user_input.lower() in ["exit", "quit", "q"]:
                 print(clr("\nExiting MedXAI Demo.", "dim"))
                 break
+            if user_input.lower().startswith("/user"):
+                parts = user_input.split()
+                name = parts[1].lower() if len(parts) > 1 else ""
+                if name in demo_users:
+                    TEST_USER_ID = demo_users[name]
+                    current_name = name
+                    print(clr(f"Switched to {name} ({TEST_USER_ID})\n", "green"))
+                else:
+                    print(clr(f"Unknown user. Options: {', '.join(demo_users)}\n", "yellow"))
+                continue
 
             print(clr("\nProcessing query through Version D pipeline...", "dim"))
             reply, card, meta = await run_agent_v2(user_input, TEST_USER_ID, verbose=True, suppress_internal_log=True)

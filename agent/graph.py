@@ -1,7 +1,7 @@
 import asyncio
 import time
 from langchain_mistralai import ChatMistralAI
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langgraph.prebuilt import create_react_agent
 from agent.tools import (
     search_medical_knowledge,
@@ -644,7 +644,9 @@ async def run_agent(message: str, user_id: str) -> tuple[str, Optional[dict[str,
         # 3. Parallel card data lookup
         msg_lower = message.lower()
         card_task = None
-        if "sleep" in msg_lower:
+        if any(k in msg_lower for k in ["fall risk", "falling", "risk of falling", "balance"]):
+            card_task = get_fall_risk_card_data(user_id)
+        elif "sleep" in msg_lower:
             card_task = get_sleep_card_data(user_id)
         elif any(k in msg_lower for k in ["blood pressure", "systolic", "diastolic"]) or re.search(r'\bbp\b', msg_lower):
             card_task = get_bp_card_data(user_id)
@@ -709,7 +711,96 @@ Output ONLY a valid JSON object matching this exact schema:
 }
 
 Do NOT wrap the JSON in markdown code blocks if possible. Ensure final_reply strictly follows all response format rules (plain text, hyphens, max 4 bullets, no markdown).
+
+FALL RISK RULES (apply whenever PATIENT DATA contains a FALL RISK ASSESSMENT block):
+- The fall risk score is computed by a deterministic engine. Quote it verbatim. Never recompute, round, adjust, or invent a score, weight, or contributor.
+- Explain the score ONLY through the TOP CONTRIBUTORS, CYCLE PHASE and PERSONAL CORRELATIONS lines provided. Do not add contributors that are not listed.
+- Describe it as an elevated / moderate / low RISK. Never say or imply the user WILL fall, and never diagnose a cause.
+- If DATA COVERAGE says LOW CONFIDENCE, or LATEST RING DATA USED is marked [STALE], say clearly that the estimate is less reliable and ask the user to sync the ring.
+- If a CYCLE PHASE line says the cycle-aware baseline was applied, you may say that normal cycle-related changes were accounted for.
+- Give one or two practical, low-risk suggestions tied to the listed contributors (e.g. rest, hydration, standing up slowly, prioritising sleep).
 """
+
+# Numbers that may legitimately appear in replies without being in the data
+# (e.g. the emergency number). Kept tiny on purpose.
+_GROUNDING_ALLOWLIST = {"112"}
+
+
+def compute_grounding_score_strict(final_reply: str, patient_data: str) -> dict:
+    """
+    Strict variant used by the self-verification loop: numbers are checked
+    against PATIENT DATA only (not the model's own facts list), with digit
+    boundaries so "5" is not "found" inside "56".
+    """
+    numbers = re.findall(r'\d+(?:\.\d+)?', final_reply or "")
+    checked = [n for n in numbers if n not in _GROUNDING_ALLOWLIST]
+    if not checked:
+        return {"grounding_score": 1.0, "total_numbers_checked": 0, "ungrounded_numbers": []}
+    ungrounded = [n for n in checked
+                  if not re.search(r'(?<![\d.])' + re.escape(n) + r'(?![\d]|\.\d)', patient_data or "")]
+    score = (len(checked) - len(ungrounded)) / len(checked)
+    return {"grounding_score": round(score, 4), "total_numbers_checked": len(checked), "ungrounded_numbers": ungrounded}
+
+
+def _parse_grounded_json(raw_content: str) -> tuple[list, str, str, str, bool]:
+    """Returns (facts, rationale, action, final_reply, parsed_ok)."""
+    import json
+    facts, rationale, action, final_reply = [], "", "", raw_content
+    try:
+        start_idx = raw_content.find("{")
+        end_idx = raw_content.rfind("}")
+        if start_idx != -1 and end_idx > start_idx:
+            parsed_json = json.loads(raw_content[start_idx:end_idx + 1])
+            facts = parsed_json.get("facts", [])
+            rationale = parsed_json.get("rationale", "")
+            action = parsed_json.get("action", "")
+            final_reply = str(parsed_json.get("final_reply", "")).strip()
+            if not final_reply:
+                final_reply = f"{rationale}\n- {action}" if (rationale or action) else raw_content
+            return facts, rationale, action, final_reply, True
+    except Exception:
+        pass
+    return facts, rationale, action, raw_content, False
+
+
+def _dedupe_lines(text: str) -> str:
+    if not text:
+        return text
+    seen, out = set(), []
+    for ln in (l.strip() for l in text.splitlines()):
+        if ln and ln not in seen:
+            seen.add(ln)
+            out.append(ln)
+    return "\n".join(out)
+
+
+async def _invoke_with_backoff(llm, messages, label: str = "VERSION D"):
+    for attempt in range(3):
+        try:
+            return await llm.ainvoke(messages)
+        except Exception as err:
+            if "429" in str(err) and attempt < 2:
+                pause_time = 3.5 * (attempt + 1)
+                print(f"[{label} LOG] Rate limited (429), pausing {pause_time:.1f}s before retry (attempt {attempt + 1})...")
+                await asyncio.sleep(pause_time)
+            else:
+                raise err
+    return None
+
+
+async def get_fall_risk_card_data(user_id: str) -> Optional[dict[str, Any]]:
+    """Fall-risk card from the deterministic engine (None if no data)."""
+    if not user_id or user_id == "anonymous":
+        return None
+    try:
+        from agent.fall_risk import get_fall_risk
+        fr = await asyncio.to_thread(get_fall_risk, user_id)
+        if fr["result"]["latest_data_date"] is None and fr["result"]["falls_365"] == 0:
+            return None
+        return fr["card"]
+    except Exception as e:
+        print(f"Error building fall risk card: {e}")
+        return None
 
 def compute_grounding_score(final_reply: str, facts: list, patient_data: str) -> dict:
     """
@@ -757,32 +848,35 @@ def compute_grounding_score(final_reply: str, facts: list, patient_data: str) ->
 
 async def run_agent_v2(message: str, user_id: str, verbose: bool = False, suppress_internal_log: bool = False) -> Any:
     """
-    Version D Orchestration Pipeline:
-    1. Parallel Query Router + LLM Safety Fusion (asyncio.gather)
-    2. Emergency Safety Fusion Gate
-    3. Selective Data Fetching (get_patient_data_selective)
-    4. Fact -> Rationale -> Action Grounded LLM Response
-    5. Server-side Evaluation Logging
+    Version D Orchestration Pipeline (Review-II):
+    1. In parallel: query router (with confidence + safety widening),
+       LLM safety classifier, and biometric fall-event lookup
+    2. Tri-modal Safety Fusion Gate (keyword + LLM + physiological event)
+    3. Selective data fetching (incl. deterministic fall-risk engine)
+    4. Fact -> Rationale -> Action grounded LLM response
+    5. Closed-loop self-verification: strict grounding check; one corrective
+       regeneration if any number is not traceable to PATIENT DATA
+    6. Server-side evaluation logging
+    Return shape is unchanged: (reply, card) or (reply, card, meta) if verbose.
     """
-    import json
-    from agent.router import classify_query_streams
+    from agent.router import classify_query_streams_v2
     from agent.tools import check_emergency_llm, check_emergency_fused, get_patient_data_selective
+    from agent.fall_risk import get_recent_fall_event
 
     try:
         t_start = time.monotonic()
 
-        # 1. Step 1 (Router) & Step 4 (Safety Fusion LLM Classifier) run IN PARALLEL
-        router_task = asyncio.create_task(classify_query_streams(message))
+        # 1. Router, LLM safety classifier and biometric lookup run IN PARALLEL
+        router_task = asyncio.create_task(classify_query_streams_v2(message))
         safety_llm_task = asyncio.create_task(check_emergency_llm(message))
+        biometric_task = asyncio.create_task(asyncio.to_thread(get_recent_fall_event, user_id))
 
-        # Await safety LLM result first to allow instant emergency short-circuiting
-        llm_emerg_res = await safety_llm_task
-        t_safety_done = time.monotonic()
+        llm_emerg_res, biometric_event = await asyncio.gather(safety_llm_task, biometric_task)
 
-        # 2. Safety Fusion Gate (Keyword + LLM classifier)
-        is_emergency, emerg_response, safety_meta = check_emergency_fused(message, llm_emerg_res)
+        # 2. Tri-modal Safety Fusion Gate
+        is_emergency, emerg_response, safety_meta = check_emergency_fused(message, llm_emerg_res, biometric_event)
         if is_emergency:
-            router_task.cancel() # Cancel unneeded router task immediately
+            router_task.cancel()
             t_done = time.monotonic()
             if not suppress_internal_log:
                 print(f"\n[VERSION D LOG] Total Emergency Short-Circuit Latency: {t_done - t_start:.3f}s")
@@ -792,8 +886,10 @@ async def run_agent_v2(message: str, user_id: str, verbose: bool = False, suppre
                 emerg_meta = {
                     "is_emergency": True,
                     "streams": [],
+                    "router_meta": {},
                     "safety_meta": safety_meta,
                     "grounding_res": {"grounding_score": 1.0, "total_numbers_checked": 0, "ungrounded_numbers": []},
+                    "self_verification": {"triggered": False},
                     "facts": [],
                     "rationale": "Emergency detected by safety fusion gate",
                     "action": "Immediate medical attention / emergency services",
@@ -807,18 +903,18 @@ async def run_agent_v2(message: str, user_id: str, verbose: bool = False, suppre
                 return emerg_response, None, emerg_meta
             return emerg_response, None
 
-        # If not an emergency, await router task result
-        streams = await router_task
+        streams, router_meta = await router_task
         t_router_done = time.monotonic()
 
-        # 3. Selective Fetch: fetch only tables matching router streams
+        # 3. Selective fetch + card lookup concurrently
         t_fetch_start = time.monotonic()
         patient_data_task = asyncio.to_thread(get_patient_data_selective, user_id, streams)
 
-        # 4. Parallel Card Data Lookup
         msg_lower = message.lower()
         card_task = None
-        if "sleep" in streams or "sleep" in msg_lower:
+        if "fall_risk" in streams:
+            card_task = get_fall_risk_card_data(user_id)
+        elif "sleep" in streams or "sleep" in msg_lower:
             card_task = get_sleep_card_data(user_id)
         elif "bp" in streams or any(k in msg_lower for k in ["blood pressure", "systolic", "diastolic"]) or re.search(r'\bbp\b', msg_lower):
             card_task = get_bp_card_data(user_id)
@@ -837,7 +933,6 @@ async def run_agent_v2(message: str, user_id: str, verbose: bool = False, suppre
         elif "cycles" in streams or any(k in msg_lower for k in ["period", "cycle", "menstrual"]):
             card_task = get_cycle_card_data(user_id)
 
-        # Execute selective fetch + card query concurrently
         if card_task:
             patient_data, card = await asyncio.gather(patient_data_task, card_task)
         else:
@@ -845,90 +940,79 @@ async def run_agent_v2(message: str, user_id: str, verbose: bool = False, suppre
             card = None
         t_fetch_done = time.monotonic()
 
-        # 5. Grounded Fact -> Rationale -> Action LLM Generation
+        # 4. Grounded Fact -> Rationale -> Action generation
         t_llm_start = time.monotonic()
         llm = get_medxai_llm()
         full_user_content = f"PATIENT DATA (Selective Streams: {streams}):\n{patient_data}\n\nUSER QUESTION:\n{message}"
+        base_messages = [SystemMessage(content=SYSTEM_PROMPT_V2_GROUNDED), HumanMessage(content=full_user_content)]
 
-        llm_res = None
-        for attempt in range(3):
-            try:
-                llm_res = await llm.ainvoke([
-                    SystemMessage(content=SYSTEM_PROMPT_V2_GROUNDED),
-                    HumanMessage(content=full_user_content)
-                ])
-                break
-            except Exception as err:
-                if "429" in str(err) and attempt < 2:
-                    pause_time = 3.5 * (attempt + 1)
-                    print(f"[VERSION D LOG] Rate limited (429), pausing {pause_time:.1f}s before retry (attempt {attempt + 1})...")
-                    await asyncio.sleep(pause_time)
-                else:
-                    raise err
+        llm_res = await _invoke_with_backoff(llm, base_messages)
+        raw_content = str(llm_res.content).strip() if llm_res else ""
+        facts, rationale, action, final_reply, parsed_ok = _parse_grounded_json(raw_content)
+        if not parsed_ok and not suppress_internal_log:
+            print("[VERSION D LOG] JSON parse failed, falling back to raw output.")
+        final_reply = _dedupe_lines(final_reply)
+
+        # 5. Closed-loop self-verification (strict: PATIENT DATA only)
+        strict_before = compute_grounding_score_strict(final_reply, patient_data)
+        self_verification = {
+            "triggered": False,
+            "score_before": strict_before["grounding_score"],
+            "ungrounded_before": strict_before["ungrounded_numbers"],
+            "score_after": strict_before["grounding_score"],
+            "ungrounded_after": strict_before["ungrounded_numbers"],
+        }
+        if strict_before["ungrounded_numbers"]:
+            self_verification["triggered"] = True
+            correction = (
+                "VERIFICATION FAILED. Your final_reply contains these numbers that do NOT appear in PATIENT DATA: "
+                f"{strict_before['ungrounded_numbers']}. Rewrite the JSON so that final_reply contains ONLY numbers that "
+                "appear verbatim in PATIENT DATA. Remove any number you cannot find, or replace it with the exact value from "
+                "PATIENT DATA. Keep the same format rules. Output ONLY the JSON object."
+            )
+            fix_res = await _invoke_with_backoff(llm, base_messages + [
+                AIMessage(content=raw_content), HumanMessage(content=correction)
+            ])
+            fix_raw = str(fix_res.content).strip() if fix_res else ""
+            f2, r2, a2, reply2, ok2 = _parse_grounded_json(fix_raw)
+            reply2 = _dedupe_lines(reply2)
+            strict_after = compute_grounding_score_strict(reply2, patient_data)
+            if ok2 and reply2 and strict_after["grounding_score"] >= strict_before["grounding_score"]:
+                facts, rationale, action, final_reply = f2, r2, a2, reply2
+                self_verification["score_after"] = strict_after["grounding_score"]
+                self_verification["ungrounded_after"] = strict_after["ungrounded_numbers"]
+            self_verification["accepted_correction"] = final_reply == reply2
 
         t_llm_done = time.monotonic()
-        raw_content = str(llm_res.content).strip() if llm_res else ""
         t_done = time.monotonic()
 
-        facts, rationale, action, final_reply = [], "", "", raw_content
-        try:
-            start_idx = raw_content.find("{")
-            end_idx = raw_content.rfind("}")
-            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-                json_str = raw_content[start_idx:end_idx + 1]
-                parsed_json = json.loads(json_str)
-                facts = parsed_json.get("facts", [])
-                rationale = parsed_json.get("rationale", "")
-                action = parsed_json.get("action", "")
-                final_reply = str(parsed_json.get("final_reply", "")).strip()
-
-                if not final_reply:
-                    if rationale or action:
-                        final_reply = f"{rationale}\n- {action}"
-                    else:
-                        final_reply = raw_content
-            else:
-                final_reply = raw_content
-        except Exception as parse_err:
-            if not suppress_internal_log:
-                print(f"[VERSION D LOG] JSON parse exception ({parse_err}), falling back to raw output.")
-            final_reply = raw_content
-
-        # Deduplicate identical lines in final_reply while preserving order
-        if final_reply:
-            lines = [ln.strip() for ln in final_reply.splitlines() if ln.strip()]
-            seen = set()
-            deduped = []
-            for ln in lines:
-                if ln not in seen:
-                    seen.add(ln)
-                    deduped.append(ln)
-            final_reply = "\n".join(deduped)
-
-        # 6. Compute Grounding Verification Score
+        # 6. Grounding score (Review-I metric, kept for comparability)
         grounding_res = compute_grounding_score(final_reply, facts, patient_data)
+        grounding_res["strict_score"] = self_verification["score_after"]
         total_n = grounding_res["total_numbers_checked"]
         ungrounded = grounding_res["ungrounded_numbers"]
         grounded_n = total_n - len(ungrounded)
         score_val = grounding_res["grounding_score"]
 
-        # 7. Evaluation Server-Side Logging with per-stage timing
         if not suppress_internal_log:
             try:
                 print("\n==================== [VERSION D EVALUATION LOG] ====================")
                 print("--- PER-STAGE TIMING BREAKDOWN ---")
-                print(f"1. Stage 1 (Router + Safety LLM Stage): {t_router_done - t_start:.3f} seconds")
-                print(f"2. Stage 2 (Supabase Selective Fetch):  {t_fetch_done - t_fetch_start:.3f} seconds")
-                print(f"3. Stage 3 (Final LLM Generation):      {t_llm_done - t_llm_start:.3f} seconds")
-                print(f"TOTAL PIPELINE EXECUTION LATENCY:      {t_done - t_start:.3f} seconds")
+                print(f"1. Stage 1 (Router + Safety LLM + Biometric): {t_router_done - t_start:.3f} seconds")
+                print(f"2. Stage 2 (Supabase Selective Fetch):       {t_fetch_done - t_fetch_start:.3f} seconds")
+                print(f"3. Stage 3 (LLM Generation + Verification):  {t_llm_done - t_llm_start:.3f} seconds")
+                print(f"TOTAL PIPELINE EXECUTION LATENCY:           {t_done - t_start:.3f} seconds")
                 print("-------------------------------------------------------------------")
-                print(f"Router Selected Streams: {streams}")
-                print(f"Safety Fusion Signals:   Keyword={safety_meta['keyword_triggered']} | LLM={safety_meta['llm_triggered']} (Conf={safety_meta['llm_confidence']:.2f})")
+                print(f"Router Selected Streams: {streams} | {router_meta}")
+                print(f"Safety Fusion Signals:   Keyword={safety_meta['keyword_triggered']} | LLM={safety_meta['llm_triggered']} "
+                      f"(Conf={safety_meta['llm_confidence']:.2f}) | Biometric={safety_meta.get('biometric_triggered')}")
                 print("--- FACT -> RATIONALE -> ACTION BREAKDOWN ---")
                 print(f"FACTS:     {str(facts).encode('ascii', 'backslashreplace').decode('ascii')}")
                 print(f"RATIONALE: {str(rationale).encode('ascii', 'backslashreplace').decode('ascii')}")
                 print(f"ACTION:    {str(action).encode('ascii', 'backslashreplace').decode('ascii')}")
                 print(f"Grounding Score: {score_val:.2f} ({grounded_n}/{total_n} numbers verified against source data)")
+                print(f"Self-Verification: triggered={self_verification['triggered']} | strict score "
+                      f"{self_verification['score_before']:.2f} -> {self_verification['score_after']:.2f}")
                 if ungrounded:
                     print(f"WARNING: Ungrounded numbers detected: {ungrounded}")
                 print("-------------------------------------------------------------------")
@@ -941,11 +1025,14 @@ async def run_agent_v2(message: str, user_id: str, verbose: bool = False, suppre
             verbose_meta = {
                 "is_emergency": False,
                 "streams": streams,
+                "router_meta": router_meta,
                 "safety_meta": safety_meta,
                 "grounding_res": grounding_res,
+                "self_verification": self_verification,
                 "facts": facts,
                 "rationale": rationale,
                 "action": action,
+                "patient_data": patient_data,
                 "timing": {
                     "stage1_safety_router": t_router_done - t_start,
                     "stage2_fetch": t_fetch_done - t_fetch_start,
