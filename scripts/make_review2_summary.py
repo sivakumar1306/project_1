@@ -291,40 +291,101 @@ def section_exp3(d) -> list[str]:
     if "perm_p" in models.get("D3", {}):
         notes.append("D3 permutation p comes from a single stratified 5-fold split (`permutation_test_score`); "
                      "the D3 AUC in the table is the 20×5 repeated-CV mean, which is the reported estimate.")
-    return out + [f"- {n}" for n in notes] + ([""] if notes else [])
+    m0, same = models.get("M0"), [k for k in ("D1", "D3") if k in models]
+    if m0 and same and all(models[k].get("n") == m0.get("n") for k in same):
+        best = max(same, key=lambda k: models[k].get("auc", float("-inf")))
+        verdict = "did not improve on" if models[best]["auc"] <= m0["auc"] else "scored above"
+        notes.insert(0, f"On the same {num(m0.get('n'))} subjects, the best model that adds daily-life gait ({best}, AUC "
+                        f"{num(models[best]['auc'])}) {verdict} the lab-walk index alone (M0, AUC {num(m0['auc'])}). "
+                        "All pre-registered models are reported above.")
+    out += [f"- {n}" for n in notes] + ([""] if notes else [])
+    uni = d.get("univariate") or {}
+    if uni:
+        rows = [[f, num(u.get("med_f")), num(u.get("med_nf")), num(u.get("auc"))] for f, u in uni.items()]
+        out += ["### Daily-life per-feature AUC (a priori risk direction)", ""]
+        out += table(["Feature", "Median fallers", "Median non-fallers", "AUC"], rows) + [""]
+    return out
+
+
+def _count(rs, pred) -> str:
+    return f"{sum(1 for r in rs if pred(r))}/{len(rs)}"
 
 
 def section_agent(summary, records) -> list[str]:
     out = ["## 7. Agent Versions A–D on fall scenarios (live, `run_fall_evaluation.py`)", ""]
-    headers = ["Version", "Emergency recall", "False-positive rate", "Strict grounding", "Stale disclosure", "Mean latency (s)"]
     labels = {"A": "A — Plain LLM", "B": "B — Plain RAG", "C": "C — Baseline (fetch-all, keyword safety)",
               "D": "D — Coupled Routing-Safety"}
+    headers = ["Version", "Emergency recall", "False-positive rate", "Strict grounding", "Stale disclosure", "Mean latency (s)"]
     if not summary:
         out += table(headers, [not_run_row("eval_summary", len(headers))]) + [""]
-    else:
-        rows = [[labels.get(v, v), num(s.get("recall"), 2), num(s.get("fpr"), 2), num(s.get("grounding"), 2),
-                 num(s.get("stale_disclosed"), 2), num(s.get("latency"), 2)] for v, s in summary.items()]
-        out += table(headers, rows) + [""]
     if not records:
-        out += [f"Per-reply records: _{NOT_RUN}_ (`{FILES['eval_results']}` missing).", ""]
-        return out
+        if summary:
+            out += table(headers, [[labels.get(v, v), num(s.get("recall"), 2), num(s.get("fpr"), 2),
+                                    num(s.get("grounding"), 2), num(s.get("stale_disclosed"), 2),
+                                    num(s.get("latency"), 2)] for v, s in summary.items()]) + [""]
+        return out + [f"Per-reply records: _{NOT_RUN}_ (`{FILES['eval_results']}` missing).", ""]
+
+    versions = sorted({r.get("version") for r in records})
+    cases = sorted({r.get("case") for r in records})
+    runs = sorted({r.get("run") for r in records})
+    n_em = len({r["case"] for r in records if r.get("expected_emergency")})
+    out += [f"{len(cases)} scenarios × {len(versions)} versions × {len(runs)} run(s) = {len(records)} replies; "
+            f"{n_em} scenarios are emergencies, {len(cases) - n_em} are not. With one run per scenario, "
+            "each rate below is a count out of a handful of replies, so counts are shown next to rates.", ""]
+    rows = []
+    for v in versions:
+        rv = [r for r in records if r.get("version") == v]
+        em = [r for r in rv if r.get("expected_emergency")]
+        ne = [r for r in rv if not r.get("expected_emergency")]
+        st = [r for r in rv if r.get("category") == "stale-data"]
+        s = (summary or {}).get(v, {})
+        rows.append([labels.get(v, v),
+                     f"{_count(em, lambda r: r.get('emergency_detected'))} ({num(s.get('recall'), 2)})",
+                     f"{_count(ne, lambda r: r.get('emergency_detected'))} ({num(s.get('fpr'), 2)})",
+                     num(s.get("grounding"), 2),
+                     _count(st, lambda r: r.get("mentions_stale")),
+                     num(s.get("latency"), 2)])
+    out += table(["Version", "Emergencies caught", "False alarms", "Strict grounding (personal queries)",
+                  "Stale data disclosed", "Mean latency (s)"], rows) + [""]
+    out += ["Strict grounding and latency are read from `fall_evaluation_summary.json`; counts are computed from "
+            "`fall_evaluation_results.json`.", ""]
+
     d = [r for r in records if r.get("version") == "D"]
-    n_runs = len({r.get("run") for r in records})
-    out += [f"Per-reply records: {len(records)} replies over {n_runs} run(s)."]
+    notes = []
     if d:
+        per_case = []
+        for r in sorted(d, key=lambda r: r["case"]):
+            if not r.get("expected_emergency"):
+                continue
+            sig = r.get("safety_signals") or {}
+            fired = [name for name, key in (("keyword", "keyword_triggered"), ("LLM", "llm_triggered"),
+                                            ("biometric", "biometric_triggered")) if sig.get(key)]
+            per_case.append(f"case {r['case']} ({r.get('category')}): {', '.join(fired) or 'none'}")
+        if per_case:
+            notes.append("D safety signals that fired on the emergency scenarios: " + "; ".join(per_case) + ".")
         sv = [r.get("self_verification") or {} for r in d]
         fired = [s for s in sv if s.get("triggered")]
-        widened = sorted({r.get("case") for r in d if (r.get("router_meta") or {}).get("widened")})
-        non_em = [r for r in d if not r.get("emergency_detected")]
-        streams = [len(r.get("streams") or []) for r in non_em]
-        out.append(f"- D self-verification fired on {len(fired)} of {len(d)} replies"
-                   + (f"; mean strict grounding {num(sum(s['score_before'] for s in fired) / len(fired), 2)} → "
-                      f"{num(sum(s['score_after'] for s in fired) / len(fired), 2)}" if fired else ""))
-        out.append(f"- D safety widening fired on case ids: {widened if widened else 'none'}")
-        if streams:
-            out.append(f"- D mean streams fetched on non-emergency replies: {num(sum(streams) / len(streams), 1)}")
-    out.append("")
-    return out
+        notes.append(f"D self-verification fired on {len(fired)} of {len(d)} replies"
+                     + (f"; strict grounding {num(sum(s['score_before'] for s in fired) / len(fired), 2)} → "
+                        f"{num(sum(s['score_after'] for s in fired) / len(fired), 2)}" if fired else "") + ".")
+        confs = [(r.get("router_meta") or {}).get("confidence") for r in d]
+        confs = [c for c in confs if isinstance(c, (int, float))]
+        widened = sorted({r["case"] for r in d if (r.get("router_meta") or {}).get("widened")})
+        if confs:
+            notes.append(f"Safety widening fired on {'case ids ' + str(widened) if widened else 'no query'}: router "
+                         f"confidence was {num(min(confs), 2)}–{num(max(confs), 2)} on all {len(confs)} routed queries, "
+                         "above the 0.75 widening threshold. Widening is covered by unit tests only.")
+        non_em = [len(r.get("streams") or []) for r in d if not r.get("emergency_detected")]
+        if non_em:
+            notes.append(f"D fetched {num(sum(non_em) / len(non_em), 2)} data streams per non-emergency reply on average "
+                         "(C always fetches everything).")
+    lat = {v: (summary or {}).get(v, {}).get("latency") for v in ("C", "D")}
+    cmp_ = ""
+    if all(isinstance(x, (int, float)) for x in lat.values()):
+        cmp_ = f" On this run D's mean ({num(lat['D'], 2)} s) is {'higher' if lat['D'] > lat['C'] else 'not higher'} than C's ({num(lat['C'], 2)} s)."
+    notes.append("Latency is from a batch run: it includes API rate-limit retries and, for D, the extra router, safety "
+                 "and self-verification LLM calls. Do not read it as D being faster." + cmp_)
+    return out + [f"- {n}" for n in notes] + [""]
 
 
 # ── main ───────────────────────────────────────────────────────────────────
