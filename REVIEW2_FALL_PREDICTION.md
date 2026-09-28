@@ -15,7 +15,8 @@
 | Demo cohort (5 users × 35 days) | `scripts/fall_demo_data.py`, `seed_fall_demo.py` |
 | Offline engine analysis + charts | `run_fall_engine_analysis.py` |
 | Live A–D evaluation + charts | `run_fall_evaluation.py` |
-| Tests (24, offline) | `tests/` |
+| Tests (offline) | `tests/` |
+| Results summary, architecture, methods | `scripts/make_review2_summary.py`, `docs/` |
 
 Also fixed: `agent/tools.py` used `timedelta` without importing it, so the cycle "estimated next period" was always "unknown".
 
@@ -23,9 +24,10 @@ Also fixed: `agent/tools.py` used `timedelta` without importing it, so the cycle
 
 1. Supabase SQL editor: run `schema_fall.sql` once.
 2. `python seed_fall_demo.py` — seeds the 5 demo users. **Re-run on the morning of the review**, because data is generated relative to today.
-3. `python -m pytest tests -q` — should report 24 passed (no network needed).
+3. `python -m pytest tests -q` — all tests should pass (34 at the time of writing; no network needed).
 4. `python run_fall_engine_analysis.py` — offline charts: evidence weights, 21-day trends, cycle ablation, attribution.
 5. `python run_fall_evaluation.py` — live A–D evaluation (uses Groq). Add `--runs 3` if quota allows.
+   Then `python scripts/make_review2_summary.py` to regenerate `docs/RESULTS_SUMMARY.md` from whatever results files exist.
 6. Right before the live demo: `python seed_fall_demo.py --fall-now` (the biometric signal only looks back 30 minutes).
 
 ## Demo users
