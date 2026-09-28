@@ -285,3 +285,29 @@ transcribed yet. Placeholders to fill from the code once it is pushed:
     qualitative claim, and on general-knowledge questions (no streams fetched) it flags every
     legitimate number, which triggers the correction loop.
 11. **Dates in UTC.** Engine "today" is the UTC date; for IST users the day boundary is 5 h 30 min off.
+
+### Known limitations of the prototype
+
+These concern the prototype's engineering, not the methods above.
+
+1. **No authentication (planned for Review-III).** The API trusts the `user_id` sent in the request
+   (`routers/chat.py::chat` reads it from the JSON body, `routers/health.py::get_health_data` from the
+   URL path), and the backend talks to Supabase with the service-role key (`db/supabase.py`), which
+   bypasses row-level security. Any client that knows or guesses a user id can read that user's
+   biometrics and fall-risk data. The Review-III plan is to verify the Supabase JWT on every request,
+   take `user_id` from the verified token, and query with the user's own token so row-level security
+   applies. This is not implemented in Review-II.
+2. **Version C and Version D read the current heart rate with different filters.** Version C
+   (`agent/tools.py::get_patient_data`) takes the latest `user_hr_readings` row. Version D
+   (`agent/tools.py::get_patient_data_selective`) adds `.neq("source", "demo_seed")`. In PostgREST that
+   comparison is also false for rows whose `source` is NULL, and `source` is nullable with no default
+   (`schema.sql`, `user_hr_readings`). So for real users whose readings have no `source`, Version D
+   reports "no reading found" while Version C shows a value.
+   **Why the fall evaluation is not affected:** the demo cohort's heart-rate readings are written
+   with `source = "smart_ring"` (`scripts/fall_demo_data.py::generate_user`), and `seed_fall_demo.py`
+   deletes each demo user's existing `user_hr_readings` rows before seeding. Both filters therefore
+   return the same row for every demo user. The grounding reference in `run_fall_evaluation.py` is
+   built with the same function as Version D, so no reply is scored against a different reading.
+   (`"demo_seed"` is only used as the `source` of seeded *fall events*, a different table.) The
+   proposed fix, `.or_("source.is.null,source.neq.demo_seed")`, is deferred until it can be checked
+   against the live database.
