@@ -223,3 +223,24 @@ def test_v2_detector_recovers_true_variability_despite_turns():
     err_v2 = np.abs(r[:, 2] - r[:, 0]).mean()
     assert err_v2 < 1.0 and err_v2 < err_v1 / 3
     assert np.corrcoef(r[:, 0], r[:, 2])[0, 1] > 0.9
+
+
+def test_daily_walking_detector_finds_walks_and_ignores_rest():
+    import numpy as np
+    from scripts.gait_synthetic_bench import simulate_walk
+    from agent.daily_gait import walking_windows, detect_bouts, daily_features_for_chunks
+    rng = np.random.default_rng(0)
+    fs = 100
+    rest = lambda s: (np.ones(int(s * fs)) + rng.normal(0, 0.01, int(s * fs)))
+    wv, wml, wap, wyaw, _, _ = simulate_walk(0.02, seed=4, dur=60, turns=False)
+    v = np.concatenate([rest(120), wv, rest(120)])
+    ml = np.concatenate([rng.normal(0, .01, 12000), wml, rng.normal(0, .01, 12000)])
+    ap = np.concatenate([rng.normal(0, .01, 12000), wap, rng.normal(0, .01, 12000)])
+    walk = walking_windows(v, fs)
+    bouts = detect_bouts(walk, fs)
+    assert len(bouts) == 1
+    a, b = bouts[0]
+    assert 115 * fs <= a <= 130 * fs and 170 * fs <= b <= 185 * fs      # found the 60 s walk
+    assert walk[:20].sum() == 0 and walk[-20:].sum() == 0               # rest is not walking
+    f = daily_features_for_chunks([{"v": v, "ml": ml, "ap": ap, "yaw": None}] * 3, fs)
+    assert f["d_n_bouts"] == 3 and abs(f["d_cadence"] - 60 / (wv.size and 0.55)) < 25
