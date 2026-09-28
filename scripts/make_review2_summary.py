@@ -247,8 +247,13 @@ def section_exp2(d) -> list[str]:
         if p:
             out += [f"**{key} permutation test:** AUC (single 5-fold CV) {num(p.get('auc_single_cv'))} vs shuffled-label "
                     f"null mean {num(p.get('null_mean'))} (95th percentile {num(p.get('null_95th'))}), "
-                    f"p = {num(p.get('p_value'), 4)}. Note this single-CV AUC is a different estimate from the "
-                    f"20×5 repeated-CV mean in the table above.", ""]
+                    f"p = {num(p.get('p_value'), 4)}.", "",
+                    f"Why two AUCs for {key}: the permutation test (`permutation_test_score`) refits the model on "
+                    "one stratified 5-fold split and averages the per-fold ROC AUC, so its "
+                    f"{num(p.get('auc_single_cv'))} depends on that single split. The table value "
+                    f"({num(m.get('auc'))}) pools out-of-fold predictions and averages over 20 repeated 5-fold "
+                    "splits; it is less split-dependent and is **the reported estimate** for "
+                    f"{key}. The permutation test is used only to ask whether {key} beats chance.", ""]
     sel = d.get("m4_selection_frequency") or {}
     if sel:
         top = list(sel.items())[:8]
@@ -259,28 +264,34 @@ def section_exp2(d) -> list[str]:
 
 def section_exp3(d) -> list[str]:
     out = ["## 6. LTMM Experiment 3 — daily-life walking (3-day recordings)", ""]
-    headers = ["Model", "Description", "AUC", "Spread", "Permutation p"]
+    headers = ["Model", "Description", "n", "AUC", "Spread", "Permutation p"]
     if not d:
         out += table(headers, [not_run_row("exp3", len(headers))])
         out += ["", "Placeholders for the slide until the run finishes: "
                 "`{{LTMM_DAILY_N}}`, `{{LTMM_DAILY_D1_AUC}}`, `{{LTMM_DAILY_PERM_P}}`.", ""]
         return out
-    # The schema of this file is not fixed in the repo yet, so render defensively.
-    models = d.get("models") if isinstance(d.get("models"), dict) else None
-    if models:
-        rows = []
-        for key in sorted(models):
-            m = models[key] if isinstance(models[key], dict) else {"auc": models[key]}
-            perm = m.get("permutation") if isinstance(m.get("permutation"), dict) else {}
-            p = _first(perm, "p_value", "p") if perm else _first(m, "perm_p", "p_value", "permutation_p")
-            spread = f"95% CI {ci(m.get('ci95'))}" if m.get("ci95") else (f"± {num(m.get('sd'))}" if "sd" in m else "n/a")
-            rows.append([key, m.get("name", ""), num(_first(m, "auc", "mean_auc")), spread, num(p, 4)])
-        out += [f"n = {num(_first(d, 'n', 'n_subjects'))}.", ""] + table(headers, rows) + [""]
-    else:
-        out += ["`ltmm_daily_results.json` found but it has no `models` object; top-level scalar values:", ""]
+    # run_ltmm_daily.py writes {"protocol", "results": {M0, D0..D3: {name, n, auc, ci | sd, trained, perm_p}}, ...}
+    models = d.get("results") if isinstance(d.get("results"), dict) else None
+    if not models:
+        out += ["`ltmm_daily_results.json` found but it has no `results` object; top-level scalar values:", ""]
         rows = [[k, num(v)] for k, v in d.items() if isinstance(v, (int, float, str, bool))]
-        out += table(["Key", "Value"], rows or [["(none)", ""]]) + [""]
-    return out
+        return out + table(["Key", "Value"], rows or [["(none)", ""]]) + [""]
+    order = [k for k in ("M0", "D0", "D1", "D2", "D3") if k in models] + sorted(set(models) - {"M0", "D0", "D1", "D2", "D3"})
+    rows = []
+    for key in order:
+        m = models[key]
+        spread = f"95% CI {ci(m.get('ci'))}" if not m.get("trained") else f"± {num(m.get('sd'))} SD over 20×5 CV"
+        rows.append([key, m.get("name", ""), num(m.get("n")), num(m.get("auc")), spread,
+                     num(m["perm_p"], 4) if "perm_p" in m else "—"])
+    out += [f"Protocol: {d.get('protocol', 'n/a')}.", ""] + table(headers, rows) + [""]
+    notes = []
+    if "perm_p" in models.get("D1", {}):
+        notes.append("D1 permutation p: the untrained index is re-scored against shuffled labels, so it tests the "
+                     "same AUC shown in the table.")
+    if "perm_p" in models.get("D3", {}):
+        notes.append("D3 permutation p comes from a single stratified 5-fold split (`permutation_test_score`); "
+                     "the D3 AUC in the table is the 20×5 repeated-CV mean, which is the reported estimate.")
+    return out + [f"- {n}" for n in notes] + ([""] if notes else [])
 
 
 def section_agent(summary, records) -> list[str]:

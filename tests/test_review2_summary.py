@@ -43,15 +43,29 @@ def test_values_are_copied_not_invented(tmp_path):
     assert "| Timed Up and Go (clinical) | n/a |" in md
 
 
-def test_daily_results_with_unknown_schema_are_rendered_defensively(tmp_path):
-    _write(tmp_path, FILES["exp3"], {"n": 71, "models": {
-        "D1": {"name": "daily index", "auc": 0.66, "ci95": [0.5, 0.8]},
-        "D2": {"name": "LR", "auc": 0.7, "sd": 0.02, "permutation": {"p_value": 0.01}},
+def test_daily_results_use_run_ltmm_daily_schema(tmp_path):
+    # shape written by run_ltmm_daily.py::main (values here are test fixtures, not results)
+    _write(tmp_path, FILES["exp3"], {"protocol": "12 x 30.0 min slices; pre-registered D0-D3 + M0", "results": {
+        "D0": {"name": "Daily-life index (untrained)", "n": 71, "auc": 0.66, "ci": [0.5, 0.8], "trained": False},
+        "D1": {"name": "Combined [primary]", "n": 70, "auc": 0.7, "ci": [0.55, 0.82], "trained": False, "perm_p": 0.002},
+        "D3": {"name": "LogReg: lab + daily (k=6)", "n": 70, "auc": 0.68, "sd": 0.03, "trained": True, "perm_p": 0.04},
     }})
     md = build(str(tmp_path))
-    assert "| D1 | daily index | 0.660 | 95% CI 0.500 – 0.800 | n/a |" in md
-    assert "| D2 | LR | 0.700 | ± 0.020 | 0.0100 |" in md
+    assert "| D0 | Daily-life index (untrained) | 71 | 0.660 | 95% CI 0.500 – 0.800 | — |" in md
+    assert "| D1 | Combined [primary] | 70 | 0.700 | 95% CI 0.550 – 0.820 | 0.0020 |" in md
+    assert "| D3 | LogReg: lab + daily (k=6) | 70 | 0.680 | ± 0.030 SD over 20×5 CV | 0.0400 |" in md
+    assert md.index("| D0 |") < md.index("| D1 |") < md.index("| D3 |")
+    assert "20×5 repeated-CV mean, which is the reported estimate" in md
     assert "{{LTMM_DAILY_D1_AUC}}" not in md
+
+
+def test_m4_permutation_auc_is_explained_as_secondary(tmp_path):
+    _write(tmp_path, FILES["exp2"], {"n": 73, "models": {"M4": {
+        "name": "LogReg [primary]", "auc": 0.65, "sd": 0.03, "trained": True,
+        "permutation": {"auc_single_cv": 0.68, "p_value": 0.03, "null_mean": 0.51, "null_95th": 0.66}}}})
+    md = build(str(tmp_path))
+    assert "| M4 | LogReg [primary] | 0.650 |" in md
+    assert "(0.650) pools out-of-fold predictions" in md and "**the reported estimate** for M4" in md
 
 
 def test_agent_summary_and_nan_grounding(tmp_path):
