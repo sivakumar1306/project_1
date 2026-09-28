@@ -55,6 +55,15 @@ async def search_medical_knowledge(query: str) -> str:
 # needed here; left as plain synchronous Supabase calls, matching how @tool
 # functions are meant to be written. (search_medical_knowledge above is the
 # one exception that needed to be async, for the reason explained there.)
+def _sleep_line(day: dict) -> str:
+    """One RECENT SLEEP line. Some rows store total_duration in seconds; the
+    fall-risk engine and the sleep card treat values > 1440 as seconds, so do
+    the same here instead of printing e.g. "450h 0m"."""
+    total = day.get("total_duration") or 0
+    total_min = int(round(total / 60 if total > 1440 else total))
+    return f"- {day.get('date')}: {total_min // 60}h {total_min % 60}m, score {day.get('sleep_score')}/100\n"
+
+
 def _fall_risk_context(user_id: str) -> str:
     try:
         from agent.fall_risk import get_fall_risk
@@ -152,8 +161,7 @@ PATIENT PROFILE:
         if sleep:
             context += "\nRECENT SLEEP:\n"
             for day in reversed(sleep):
-                total_min = day.get("total_duration") or 0
-                context += f"- {day.get('date')}: {total_min // 60}h {total_min % 60}m, score {day.get('sleep_score')}/100\n"
+                context += _sleep_line(day)
 
         if hr:
             context += "\nHISTORICAL DAILY HEART RATE (NOT the current/live reading):\n"
@@ -322,8 +330,7 @@ PATIENT PROFILE:
         if sleep:
             context += "\nRECENT SLEEP:\n"
             for day in reversed(sleep):
-                total_min = day.get("total_duration") or 0
-                context += f"- {day.get('date')}: {total_min // 60}h {total_min % 60}m, score {day.get('sleep_score')}/100\n"
+                context += _sleep_line(day)
 
         hr = results.get("hr")
         if hr:
@@ -424,13 +431,16 @@ EMERGENCY_KEYWORDS = [
 # Regex patterns for fall phrases that need guarding against benign uses
 # (e.g. "I fell asleep", "I fell behind").
 FALL_PATTERNS = [
-    (r"\bi (?:just |have |'ve )?(?:fell|fallen|had a fall)\b(?!\s+(?:asleep|behind|for|in love|ill|sick|off track))", "i fell"),
+    (r"\bi(?:'ve|ve| have)?(?: just)? (?:fell|fallen|had a fall)\b(?!\s+(?:asleep|behind|for|in love|ill|sick|off track))", "i fell"),
     (r"\b(?:on|lying on) the (?:\w+ )?floor\b", "on the floor"),
 ]
+# Phone keyboards often send typographic apostrophes ("can’t get up");
+# normalise them so the straight-apostrophe vocabulary above still matches.
+_APOSTROPHES = str.maketrans({"’": "'", "‘": "'", "ʼ": "'", "′": "'"})
 
 
 def match_emergency_keywords(message: str) -> list[str]:
-    msg_lower = message.lower()
+    msg_lower = message.lower().translate(_APOSTROPHES)
     hits = [kw for kw in EMERGENCY_KEYWORDS if kw in msg_lower]
     for pattern, label in FALL_PATTERNS:
         if re.search(pattern, msg_lower) and label not in hits:
