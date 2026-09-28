@@ -173,5 +173,6 @@ costs recall.
 validated on PhysioNet LTMM lab walks by `run_ltmm_validation.py` (Exp 1) and
 `run_ltmm_experiment2.py` (Exp 2). It is **not** called by the chat backend: the backend Motion layer
 uses daily steps and near-fall events (see `METHODS.md` §1 and Limitations).
-`agent/daily_gait.py` and `run_ltmm_daily.py` (Exp 3) are referenced in the Review-II plan but are not
-in this repository yet.
+Experiment 3 (`run_ltmm_daily.py`) applies the same v2 extractor to walking bouts detected in the
+3-day free-living recordings by `agent/daily_gait.py` (`walking_windows`, `detect_bouts`,
+`daily_features_for_chunks`); see `METHODS.md` §2.6.

@@ -207,22 +207,51 @@ multiplied by its a priori risk direction (`RISK_DIRECTION`, `RISK_DIRECTION_V2`
 cadence −, variability +, regularity −, HR_AP −, turn duration +, turn peak velocity −, steps/180° +),
 and averaged over the available features. No fall labels are used.
 
-### 2.6 Daily-life walking detection (Experiment 3) — `agent/daily_gait.py` *(not in repository)*
+### 2.6 Daily-life walking detection (Experiment 3) — `agent/daily_gait.py`
 
-`agent/daily_gait.py` and `run_ltmm_daily.py` are not committed, so their thresholds cannot be
-transcribed yet. Placeholders to fill from the code once it is pushed:
+Label-free and fixed before running on real data. Applied to each sampled slice of a 3-day recording.
 
-| Quantity | Value | Where |
+**Walking windows** — `walking_windows`. The V axis is flipped if median(V) < 0, band-passed as in
+§2.1, and cut into non-overlapping `WIN_S` = 5 s windows (a trailing partial window is dropped). A
+window is **walking** only if all three hold:
+
+| Test | Threshold | Constant |
 |---|---|---|
-| Walking-bout activity threshold | `{{DAILY_GAIT_ACTIVITY_THRESHOLD}}` | `agent/daily_gait.py::{{FUNCTION}}` |
-| Minimum bout duration | `{{DAILY_GAIT_MIN_BOUT_S}}` | `agent/daily_gait.py::{{FUNCTION}}` |
-| Step-frequency band for walking | `{{DAILY_GAIT_STEP_FREQ_BAND}}` | `agent/daily_gait.py::{{FUNCTION}}` |
-| Regularity threshold for walking | `{{DAILY_GAIT_REGULARITY_MIN}}` | `agent/daily_gait.py::{{FUNCTION}}` |
-| Per-subject aggregation of bouts | `{{DAILY_GAIT_AGGREGATION}}` | `agent/daily_gait.py::{{FUNCTION}}` |
+| Moving: RMS of band-passed V in the window | ≥ 0.06 g | `MIN_RMS_G` |
+| Rhythmic: max V autocorrelation (§2.1) at lags 0.35–0.80 s | ≥ 0.40 | `MIN_AC` |
+| Step frequency: dominant frequency of the Hann-windowed V spectrum, searched in 0.5–4.0 Hz | 1.3–2.6 Hz (≈ 80–155 steps/min) | `STEP_F_LO`, `STEP_F_HI` |
+
+With 5 s windows the spectral resolution is 0.2 Hz.
+
+**Bouts** — `detect_bouts`: a bout is ≥ `MIN_BOUT_WINDOWS` = 4 consecutive walking windows (≥ 20 s).
+Bouts do not span slices.
+
+**Per bout** — `daily_features_for_chunks`: the full bout length is recorded, but only the first
+`MAX_BOUT_S` = 120 s are analysed, so long walks do not dominate. The analysed part goes through the
+lab v2 extractor `extract_gait_features_v2` (§2.3) with the bout's yaw signal, so turn removal,
+McCamley initial contacts, plausibility filtering and the 3 s end-trimming (bouts > 22 s) all apply.
+Features kept: cadence, stride-time CV, step and stride regularity, HR_AP.
+
+**Per subject** — `daily_features_for_chunks`:
+
+- `d_walking_min_per_hour` = (walking windows × 5 s, in minutes) / (sampled hours). This counts every
+  walking window, including those in runs too short to form a bout.
+- `d_n_bouts`, `d_sampled_hours`, `d_walking_minutes` (descriptive).
+- If there are ≥ `MIN_BOUTS` = 3 bouts: `d_median_bout_s` = median bout length, and each gait feature =
+  median over the bouts where it is not NaN (at least 3 such bouts required). Otherwise NaN.
+
+**Daily-life index** — `daily_index`: same label-free z-score average as §2.5, using
+`DAILY_DIRECTION`: cadence −, stride-time CV +, step regularity −, stride regularity −, HR_AP −,
+walking minutes per hour − (less walking = worse), median bout length − (shorter bouts = worse).
+
+**Sampling** — `run_ltmm_daily.py::fetch_subject`: from each 3-day recording, 12 slices of 30 minutes
+(`--chunks 12 --chunk-min 30`, 6 h per subject), evenly spaced from the start to the end of the
+recording and fetched with HTTP range requests. Records whose header uses a sample format other than
+16, or that are multi-segment or shorter than one slice, are skipped.
 
 ---
 
-## 3. Statistical evaluation — `run_ltmm_validation.py`, `run_ltmm_experiment2.py`
+## 3. Statistical evaluation — `run_ltmm_validation.py`, `run_ltmm_experiment2.py`, `run_ltmm_daily.py`
 
 - Labels: LTMM subject prefix `FL` = faller (≥ 2 falls in the previous year, retrospective), `CO` =
   non-faller; one lab walk per subject (73 records listed in `CONTROLS` + `FALLERS`).
@@ -238,6 +267,14 @@ transcribed yet. Placeholders to fill from the code once it is pushed:
   min leaf 5, balanced; 20 × stratified 5-fold CV (seed 2026 + r), AUC of pooled out-of-fold
   predictions per repeat, mean ± SD. Permutation test for M4: 200 label shuffles with a single
   stratified 5-fold CV (`permutation_test_score`, mean per-fold ROC AUC).
+- Exp 3 (pre-registered, `run_ltmm_daily.py::main`): D0 daily-life index (untrained, all subjects
+  with daily data); D1 combined lab v2 + daily index (untrained, **primary**); D2 logistic regression
+  on daily features; D3 logistic regression on lab + daily features with `SelectKBest(k=6)` inside the
+  folds; M0 lab v2 index on the same subjects as reference. D1, D3 and M0 use only subjects with both
+  a lab walk and 3-day data. Untrained models: AUC with bootstrap 95 % CI. Trained models: C = 0.5,
+  balanced, 20 × stratified 5-fold CV (seed 2026 + r), mean ± SD. Chance checks: D1 by re-scoring the
+  fixed index against 1000 label permutations, p = (#null AUC ≥ real + 1) / 1001 (`perm_p_untrained`);
+  D3 by `permutation_test_score` with 200 permutations on a single 5-fold split.
 
 ---
 

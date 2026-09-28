@@ -34,3 +34,24 @@ def test_version_d_still_uses_the_documented_filter():
         src = f.read()
     # If this filter changes, update "Known limitations of the prototype" in docs/METHODS.md.
     assert src.count('.neq("source", "demo_seed")') == 1
+
+
+def test_methods_daily_walking_thresholds_match_daily_gait():
+    import agent.daily_gait as dg
+    text = _methods()
+    assert "{{" not in text, "METHODS.md still has placeholders"
+    section = text[text.index("### 2.6"):text.index("## 3. Statistical evaluation")]
+    fmt = lambda v: f"{v:g}"
+    assert f"`WIN_S` = {fmt(dg.WIN_S)} s" in section
+    assert f"≥ {fmt(dg.MIN_RMS_G)} g | `MIN_RMS_G`" in section
+    assert f"≥ {dg.MIN_AC:.2f} | `MIN_AC`" in section
+    assert f"{fmt(dg.STEP_F_LO)}–{fmt(dg.STEP_F_HI)} Hz" in section
+    assert f"`MIN_BOUT_WINDOWS` = {dg.MIN_BOUT_WINDOWS} consecutive walking windows " \
+           f"(≥ {fmt(dg.MIN_BOUT_WINDOWS * dg.WIN_S)} s)" in section
+    assert f"`MAX_BOUT_S` = {fmt(dg.MAX_BOUT_S)} s" in section
+    assert f"`MIN_BOUTS` = {dg.MIN_BOUTS} bouts" in section
+    # the autocorrelation lag window and the spectral search band are literals in walking_windows
+    import inspect
+    src = inspect.getsource(dg.walking_windows)
+    assert "int(0.35 * fs), int(0.80 * fs)" in src and "lags 0.35–0.80 s" in section
+    assert "(freqs >= 0.5) & (freqs <= 4.0)" in src and "searched in 0.5–4.0 Hz" in section
