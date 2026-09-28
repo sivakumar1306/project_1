@@ -424,13 +424,16 @@ EMERGENCY_KEYWORDS = [
 # Regex patterns for fall phrases that need guarding against benign uses
 # (e.g. "I fell asleep", "I fell behind").
 FALL_PATTERNS = [
-    (r"\bi (?:just |have |'ve )?(?:fell|fallen|had a fall)\b(?!\s+(?:asleep|behind|for|in love|ill|sick|off track))", "i fell"),
+    (r"\bi(?:'ve|ve| have)?(?: just)? (?:fell|fallen|had a fall)\b(?!\s+(?:asleep|behind|for|in love|ill|sick|off track))", "i fell"),
     (r"\b(?:on|lying on) the (?:\w+ )?floor\b", "on the floor"),
 ]
+# Phone keyboards often send typographic apostrophes ("can’t get up");
+# normalise them so the straight-apostrophe vocabulary above still matches.
+_APOSTROPHES = str.maketrans({"’": "'", "‘": "'", "ʼ": "'", "′": "'"})
 
 
 def match_emergency_keywords(message: str) -> list[str]:
-    msg_lower = message.lower()
+    msg_lower = message.lower().translate(_APOSTROPHES)
     hits = [kw for kw in EMERGENCY_KEYWORDS if kw in msg_lower]
     for pattern, label in FALL_PATTERNS:
         if re.search(pattern, msg_lower) and label not in hits:

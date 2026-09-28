@@ -244,3 +244,15 @@ def test_daily_walking_detector_finds_walks_and_ignores_rest():
     assert walk[:20].sum() == 0 and walk[-20:].sum() == 0               # rest is not walking
     f = daily_features_for_chunks([{"v": v, "ml": ml, "ap": ap, "yaw": None}] * 3, fs)
     assert f["d_n_bouts"] == 3 and abs(f["d_cadence"] - 60 / (wv.size and 0.55)) < 25
+
+
+def test_fall_keywords_handle_contractions_and_typographic_apostrophes():
+    from agent.tools import match_emergency_keywords
+    assert match_emergency_keywords("I can’t get up")                  # curly apostrophe from phone keyboards
+    assert match_emergency_keywords("I can’t breathe")
+    assert match_emergency_keywords("I've fallen and hurt my hip")
+    assert match_emergency_keywords("I’ve just fallen in the kitchen")
+    assert match_emergency_keywords("ive had a fall")
+    assert match_emergency_keywords("I have fallen")
+    assert not match_emergency_keywords("I've fallen asleep twice today")
+    assert not match_emergency_keywords("I’ve fallen behind on my walks")
