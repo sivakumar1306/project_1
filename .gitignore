@@ -5,3 +5,5 @@ __pycache__/
 *.pyo
 db/__pycache__/
 routers/__pycache__/
+data/
+.pytest_cache/
