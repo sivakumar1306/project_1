@@ -965,7 +965,8 @@ def render_ledger(L: Ledger) -> str:
     for s, f, k, *_ in L.rows:
         if (s, f, k) not in seen:
             seen.add((s, f, k))
-            out.append(f"| {s} | `{f}` | `{k}` |")
+            esc = lambda x: str(x).replace("|", "\\|")
+            out.append(f"| {esc(s)} | `{esc(f)}` | `{esc(k)}` |")
     return "\n".join(out) + "\n"
 
 
