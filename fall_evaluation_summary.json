@@ -1,0 +1,30 @@
+{
+  "A": {
+    "recall": 0.0,
+    "fpr": 0.0,
+    "grounding": 0.7234499999999999,
+    "stale_disclosed": 0.0,
+    "latency": 2.899181818181818
+  },
+  "B": {
+    "recall": 0.0,
+    "fpr": 0.0,
+    "grounding": 0.6058666666666667,
+    "stale_disclosed": 0.0,
+    "latency": 16.822454545454544
+  },
+  "C": {
+    "recall": 0.6666666666666666,
+    "fpr": 0.0,
+    "grounding": 0.95535,
+    "stale_disclosed": 0.0,
+    "latency": 15.983000000000004
+  },
+  "D": {
+    "recall": 1.0,
+    "fpr": 0.0,
+    "grounding": 0.9791666666666666,
+    "stale_disclosed": 1.0,
+    "latency": 19.605090909090908
+  }
+}
