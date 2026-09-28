@@ -620,7 +620,8 @@ async def run_agent_v2(message: str, user_id: str, verbose: bool = False, suppre
     3. Selective data fetching (incl. deterministic fall-risk engine)
     4. Fact -> Rationale -> Action grounded LLM response
     5. Closed-loop self-verification: strict grounding check; one corrective
-       regeneration if any number is not traceable to PATIENT DATA
+       regeneration if any number is not traceable to PATIENT DATA (skipped
+       when no patient streams were fetched or the data has no numbers)
     6. Server-side evaluation logging
     Return shape is unchanged: (reply, card) or (reply, card, meta) if verbose.
     """
@@ -719,41 +720,48 @@ async def run_agent_v2(message: str, user_id: str, verbose: bool = False, suppre
         final_reply = _dedupe_lines(final_reply)
 
         # 5. Closed-loop self-verification (strict: PATIENT DATA only)
-        strict_before = compute_grounding_score_strict(final_reply, patient_data)
-        self_verification = {
-            "triggered": False,
-            "score_before": strict_before["grounding_score"],
-            "ungrounded_before": strict_before["ungrounded_numbers"],
-            "score_after": strict_before["grounding_score"],
-            "ungrounded_after": strict_before["ungrounded_numbers"],
-        }
-        if strict_before["ungrounded_numbers"]:
-            self_verification["triggered"] = True
-            correction = (
-                "VERIFICATION FAILED. Your final_reply contains these numbers that do NOT appear in PATIENT DATA: "
-                f"{strict_before['ungrounded_numbers']}. Rewrite the JSON so that final_reply contains ONLY numbers that "
-                "appear verbatim in PATIENT DATA. Remove any number you cannot find, or replace it with the exact value from "
-                "PATIENT DATA. Keep the same format rules. Output ONLY the JSON object."
-            )
-            fix_res = await _invoke_with_backoff(llm, base_messages + [
-                AIMessage(content=raw_content), HumanMessage(content=correction)
-            ])
-            fix_raw = str(fix_res.content).strip() if fix_res else ""
-            f2, r2, a2, reply2, ok2 = _parse_grounded_json(fix_raw)
-            reply2 = _dedupe_lines(reply2)
-            strict_after = compute_grounding_score_strict(reply2, patient_data)
-            if ok2 and reply2 and strict_after["grounding_score"] >= strict_before["grounding_score"]:
-                facts, rationale, action, final_reply = f2, r2, a2, reply2
-                self_verification["score_after"] = strict_after["grounding_score"]
-                self_verification["ungrounded_after"] = strict_after["ungrounded_numbers"]
-            self_verification["accepted_correction"] = final_reply == reply2
+        # Skipped when there is nothing to verify against: no patient streams were
+        # fetched (general question) or the fetched data contains no numbers. Every
+        # number in the reply would then count as ungrounded, and the correction
+        # would strip legitimate general-knowledge numbers (e.g. "adults over 65").
+        if not streams or not re.search(r"\d", patient_data or ""):
+            self_verification = {"triggered": False, "skipped": "no patient data"}
+        else:
+            strict_before = compute_grounding_score_strict(final_reply, patient_data)
+            self_verification = {
+                "triggered": False,
+                "score_before": strict_before["grounding_score"],
+                "ungrounded_before": strict_before["ungrounded_numbers"],
+                "score_after": strict_before["grounding_score"],
+                "ungrounded_after": strict_before["ungrounded_numbers"],
+            }
+            if strict_before["ungrounded_numbers"]:
+                self_verification["triggered"] = True
+                correction = (
+                    "VERIFICATION FAILED. Your final_reply contains these numbers that do NOT appear in PATIENT DATA: "
+                    f"{strict_before['ungrounded_numbers']}. Rewrite the JSON so that final_reply contains ONLY numbers that "
+                    "appear verbatim in PATIENT DATA. Remove any number you cannot find, or replace it with the exact value from "
+                    "PATIENT DATA. Keep the same format rules. Output ONLY the JSON object."
+                )
+                fix_res = await _invoke_with_backoff(llm, base_messages + [
+                    AIMessage(content=raw_content), HumanMessage(content=correction)
+                ])
+                fix_raw = str(fix_res.content).strip() if fix_res else ""
+                f2, r2, a2, reply2, ok2 = _parse_grounded_json(fix_raw)
+                reply2 = _dedupe_lines(reply2)
+                strict_after = compute_grounding_score_strict(reply2, patient_data)
+                if ok2 and reply2 and strict_after["grounding_score"] >= strict_before["grounding_score"]:
+                    facts, rationale, action, final_reply = f2, r2, a2, reply2
+                    self_verification["score_after"] = strict_after["grounding_score"]
+                    self_verification["ungrounded_after"] = strict_after["ungrounded_numbers"]
+                self_verification["accepted_correction"] = final_reply == reply2
 
         t_llm_done = time.monotonic()
         t_done = time.monotonic()
 
         # 6. Grounding score (Review-I metric, kept for comparability)
         grounding_res = compute_grounding_score(final_reply, facts, patient_data)
-        grounding_res["strict_score"] = self_verification["score_after"]
+        grounding_res["strict_score"] = self_verification.get("score_after")
         total_n = grounding_res["total_numbers_checked"]
         ungrounded = grounding_res["ungrounded_numbers"]
         grounded_n = total_n - len(ungrounded)
@@ -776,8 +784,11 @@ async def run_agent_v2(message: str, user_id: str, verbose: bool = False, suppre
                 print(f"RATIONALE: {str(rationale).encode('ascii', 'backslashreplace').decode('ascii')}")
                 print(f"ACTION:    {str(action).encode('ascii', 'backslashreplace').decode('ascii')}")
                 print(f"Grounding Score: {score_val:.2f} ({grounded_n}/{total_n} numbers verified against source data)")
-                print(f"Self-Verification: triggered={self_verification['triggered']} | strict score "
-                      f"{self_verification['score_before']:.2f} -> {self_verification['score_after']:.2f}")
+                if self_verification.get("skipped"):
+                    print(f"Self-Verification: skipped ({self_verification['skipped']})")
+                else:
+                    print(f"Self-Verification: triggered={self_verification['triggered']} | strict score "
+                          f"{self_verification['score_before']:.2f} -> {self_verification['score_after']:.2f}")
                 if ungrounded:
                     print(f"WARNING: Ungrounded numbers detected: {ungrounded}")
                 print("-------------------------------------------------------------------")

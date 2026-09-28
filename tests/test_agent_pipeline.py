@@ -124,3 +124,41 @@ def test_general_question_fetches_nothing_and_no_alarm(monkeypatch):
     reply, card, meta = run(graph.run_agent_v2("Why do older people fall more often?", USERS_BY_KEY["low_risk"],
                                                verbose=True, suppress_internal_log=True))
     assert not meta["is_emergency"] and meta["streams"] == [] and card is None
+
+
+class GeneralNumbersLLM(FakeLLM):
+    """Answers a general-knowledge question with legitimate numbers that are not patient data."""
+
+    async def ainvoke(self, messages):
+        sys_prompt = messages[0].content
+        if sys_prompt.startswith("You are a precise data-stream routing") or \
+                sys_prompt.startswith("You are a medical safety emergency triage"):
+            return await super().ainvoke(messages)
+        self.calls.append("generation")
+        reply = ("Falls become more common with age.\n- About 1 in 4 adults over 65 falls each year\n"
+                 "- Muscle strength drops about 30 percent by age 80")
+        return SimpleNamespace(content=json.dumps({"facts": [], "rationale": "r", "action": "a", "final_reply": reply}))
+
+
+def test_general_question_with_numbers_skips_self_verification(monkeypatch):
+    llm = GeneralNumbersLLM()
+    _patch(monkeypatch, llm)
+    reply, card, meta = run(graph.run_agent_v2("Why do older people fall more often?", USERS_BY_KEY["low_risk"],
+                                               verbose=True, suppress_internal_log=True))
+    assert meta["streams"] == []
+    assert meta["self_verification"] == {"triggered": False, "skipped": "no patient data"}
+    assert "65" in reply and "30 percent" in reply                    # general-knowledge numbers kept
+    assert llm.calls.count("generation") == 1                          # no corrective regeneration
+
+
+def test_fetched_data_without_numbers_skips_self_verification(monkeypatch):
+    import agent.tools as tools
+    llm = GeneralNumbersLLM()
+    _patch(monkeypatch, llm)
+    monkeypatch.setattr(tools, "get_patient_data_selective",
+                        lambda uid, streams: "FALL RISK ASSESSMENT: NO ring data found for this user.")
+    reply, card, meta = run(graph.run_agent_v2("What's my fall risk today?", USERS_BY_KEY["low_risk"],
+                                               verbose=True, suppress_internal_log=True))
+    assert meta["streams"] == ["fall_risk"]
+    assert meta["self_verification"]["skipped"] == "no patient data"
+    assert llm.calls.count("generation") == 1
