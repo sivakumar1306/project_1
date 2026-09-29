@@ -1,0 +1,162 @@
+{
+  "dataset": "PIFv3 (Mendeley phb9y6cp5c v3), CC BY 4.0",
+  "participants": 32,
+  "sampling_hz_est": 10.0,
+  "window_sec": 2.0,
+  "physio_distinct_values_during_fall_protocol_median": {
+    "hr": 23.5,
+    "spo2": 9.0,
+    "sys": 12.5,
+    "dia": 11.0
+  },
+  "results": {
+    "primary_falls_vs_daily_activities": {
+      "MOTION | RF | RANDOM": {
+        "accuracy": 0.964,
+        "balanced_accuracy": 0.964,
+        "f1_fall": 0.969,
+        "auc": 0.992
+      },
+      "MOTION | RF | SUBJECT-WISE": {
+        "accuracy": 0.956,
+        "balanced_accuracy": 0.954,
+        "f1_fall": 0.962,
+        "auc": 0.984
+      },
+      "MOTION | LR | RANDOM": {
+        "accuracy": 0.961,
+        "balanced_accuracy": 0.963,
+        "f1_fall": 0.965,
+        "auc": 0.99
+      },
+      "MOTION | LR | SUBJECT-WISE": {
+        "accuracy": 0.96,
+        "balanced_accuracy": 0.963,
+        "f1_fall": 0.965,
+        "auc": 0.985
+      },
+      "PHYSIO | RF | RANDOM": {
+        "accuracy": 0.877,
+        "balanced_accuracy": 0.87,
+        "f1_fall": 0.897,
+        "auc": 0.949
+      },
+      "PHYSIO | RF | SUBJECT-WISE": {
+        "accuracy": 0.503,
+        "balanced_accuracy": 0.484,
+        "f1_fall": 0.582,
+        "auc": 0.486
+      },
+      "PHYSIO | LR | RANDOM": {
+        "accuracy": 0.544,
+        "balanced_accuracy": 0.534,
+        "f1_fall": 0.603,
+        "auc": 0.528
+      },
+      "PHYSIO | LR | SUBJECT-WISE": {
+        "accuracy": 0.528,
+        "balanced_accuracy": 0.517,
+        "f1_fall": 0.589,
+        "auc": 0.499
+      },
+      "MOTION+PHYSIO | RF | RANDOM": {
+        "accuracy": 0.965,
+        "balanced_accuracy": 0.964,
+        "f1_fall": 0.97,
+        "auc": 0.994
+      },
+      "MOTION+PHYSIO | RF | SUBJECT-WISE": {
+        "accuracy": 0.951,
+        "balanced_accuracy": 0.948,
+        "f1_fall": 0.958,
+        "auc": 0.983
+      },
+      "MOTION+PHYSIO | LR | RANDOM": {
+        "accuracy": 0.959,
+        "balanced_accuracy": 0.961,
+        "f1_fall": 0.964,
+        "auc": 0.99
+      },
+      "MOTION+PHYSIO | LR | SUBJECT-WISE": {
+        "accuracy": 0.954,
+        "balanced_accuracy": 0.956,
+        "f1_fall": 0.96,
+        "auc": 0.984
+      }
+    },
+    "secondary_falls_vs_all": {
+      "MOTION | RF | RANDOM": {
+        "accuracy": 0.991,
+        "balanced_accuracy": 0.957,
+        "f1_fall": 0.946,
+        "auc": 0.997
+      },
+      "MOTION | RF | SUBJECT-WISE": {
+        "accuracy": 0.986,
+        "balanced_accuracy": 0.947,
+        "f1_fall": 0.91,
+        "auc": 0.994
+      },
+      "MOTION | LR | RANDOM": {
+        "accuracy": 0.979,
+        "balanced_accuracy": 0.97,
+        "f1_fall": 0.881,
+        "auc": 0.992
+      },
+      "MOTION | LR | SUBJECT-WISE": {
+        "accuracy": 0.972,
+        "balanced_accuracy": 0.964,
+        "f1_fall": 0.846,
+        "auc": 0.987
+      },
+      "PHYSIO | RF | RANDOM": {
+        "accuracy": 0.932,
+        "balanced_accuracy": 0.772,
+        "f1_fall": 0.579,
+        "auc": 0.964
+      },
+      "PHYSIO | RF | SUBJECT-WISE": {
+        "accuracy": 0.901,
+        "balanced_accuracy": 0.509,
+        "f1_fall": 0.061,
+        "auc": 0.619
+      },
+      "PHYSIO | LR | RANDOM": {
+        "accuracy": 0.721,
+        "balanced_accuracy": 0.675,
+        "f1_fall": 0.265,
+        "auc": 0.715
+      },
+      "PHYSIO | LR | SUBJECT-WISE": {
+        "accuracy": 0.724,
+        "balanced_accuracy": 0.661,
+        "f1_fall": 0.256,
+        "auc": 0.697
+      },
+      "MOTION+PHYSIO | RF | RANDOM": {
+        "accuracy": 0.992,
+        "balanced_accuracy": 0.958,
+        "f1_fall": 0.947,
+        "auc": 0.997
+      },
+      "MOTION+PHYSIO | RF | SUBJECT-WISE": {
+        "accuracy": 0.983,
+        "balanced_accuracy": 0.943,
+        "f1_fall": 0.897,
+        "auc": 0.994
+      },
+      "MOTION+PHYSIO | LR | RANDOM": {
+        "accuracy": 0.978,
+        "balanced_accuracy": 0.967,
+        "f1_fall": 0.876,
+        "auc": 0.991
+      },
+      "MOTION+PHYSIO | LR | SUBJECT-WISE": {
+        "accuracy": 0.972,
+        "balanced_accuracy": 0.962,
+        "f1_fall": 0.848,
+        "auc": 0.986
+      }
+    }
+  }
+}
