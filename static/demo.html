@@ -89,33 +89,6 @@
   .fallbox { display: none; margin-top: 12px; align-items: center; gap: 12px; flex-wrap: wrap; }
   .fallmsg { font-weight: 600; color: #7f1010; }
   footer { text-align: center; color: var(--muted); font-size: 16px; padding: 10px 20px 30px; }
-  /* fall detection (PIFv3) */
-  .det-head { margin-top: 30px; padding: 18px 22px; border-left: 6px solid var(--navy); background: var(--panel);
-              border-radius: 14px; border: 1px solid var(--line); border-left-width: 6px; margin-bottom: 18px; }
-  .det-head h2 { font-size: 24px; text-transform: none; letter-spacing: 0; margin-bottom: 6px; }
-  .det-head p { margin: 0; font-size: 19px; color: var(--muted); }
-  table.det { border-collapse: collapse; width: 100%; font-size: 18px; margin-top: 6px; }
-  table.det th, table.det td { border: 1px solid var(--line); padding: 8px 12px; text-align: center; }
-  table.det th { background: #eef1fa; color: var(--navy); }
-  table.det td.rowh { text-align: left; font-weight: 700; white-space: nowrap; }
-  table.det th.honest, table.det td.honest { background: #eaf6ee; }
-  table.det th.honest { color: var(--low); }
-  table.det td.chance { background: var(--high-bg); color: var(--high); font-weight: 800; outline: 2px solid var(--high); outline-offset: -2px; }
-  .det-callout { margin-top: 12px; background: var(--high-bg); border: 1px solid #f3b4b4; color: #7f1010; padding: 10px 14px; border-radius: 10px; font-weight: 600; }
-  .det-chart { display: block; width: 100%; max-width: 820px; margin-top: 14px; border: 1px solid var(--line); border-radius: 10px; }
-  details.det-sec { margin-top: 14px; }
-  details.det-sec summary { cursor: pointer; color: var(--navy); font-weight: 700; font-size: 18px; }
-  .det-run { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 10px 0 6px; }
-  .det-run select { border: 1px solid #b9c1d3; }
-  .det-vitals { display: flex; gap: 22px; flex-wrap: wrap; font-size: 19px; margin: 6px 0; }
-  .det-result { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
-  .det-badge { padding: 10px 22px; border-radius: 12px; font-weight: 800; font-size: 26px; color: #fff; }
-  .det-badge.fall { background: var(--high); } .det-badge.nofall { background: var(--low); }
-  .det-truth { font-size: 20px; font-weight: 700; }
-  .det-truth.ok { color: var(--low); } .det-truth.bad { color: var(--high); }
-  .det-safety { margin-top: 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-  .det-legend { display: flex; gap: 18px; font-size: 16px; margin-top: 4px; }
-  .det-legend i { display: inline-block; width: 22px; height: 4px; vertical-align: middle; margin-right: 6px; border-radius: 2px; }
 </style>
 </head>
 <body>
@@ -166,28 +139,6 @@
     <div class="fallbox" id="fallbox">
       <button class="warn" id="fallBtn">Simulate ring fall event</button>
       <span class="fallmsg" id="fallMsg"></span>
-    </div>
-  </section>
-  <section id="detection">
-    <div class="det-head">
-      <h2>Fall Detection — trained ML model (PIFv3, 32 real participants)</h2>
-      <p>Detects whether a fall just happened from motion signals. Different from the daily fall-risk score above, which estimates risk before a fall.</p>
-    </div>
-    <div id="detUnavailable" class="panel muted" style="display:none">The fall-detection results are not available on this server (pifv3_results.json / pifv3_demo_samples.json not found). The rest of the page works as usual.</div>
-
-    <div class="panel" id="detEvalPanel">
-      <h2>Evaluation</h2>
-      <div id="detEval" class="muted">Loading…</div>
-    </div>
-
-    <div class="panel" id="detLivePanel">
-      <h2>Live detection on unseen participants</h2>
-      <div id="detLiveHead" class="muted">Loading…</div>
-      <div class="det-run">
-        <select id="detSelect" aria-label="Held-out sample"></select>
-        <button class="primary" id="detRun">Run detector</button>
-      </div>
-      <div id="detOut"></div>
     </div>
   </section>
 </main>
@@ -425,104 +376,6 @@ $("send").addEventListener("click", () => send($("input").value));
 $("input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send($("input").value); } });
 $("fallBtn").addEventListener("click", fallNow);
 loadUsers();
-
-/* ── fall detection (PIFv3): shows exactly what the committed result files contain ── */
-const DET_SETS = ["MOTION", "PHYSIO", "MOTION+PHYSIO"];
-const DET_MODELS = [["RF", "Random Forest"], ["LR", "Logistic Regression"]];
-let detBusy = false;
-function fmt3(v) { return v == null ? "—" : Number(v).toFixed(3); }
-function pct(v) { return v == null ? "—" : Math.round(Number(v) * 100) + "%"; }
-function detTable(R) {
-  let h = `<table class="det"><thead>
-    <tr><th rowspan="2">Features</th><th rowspan="2">Model</th>
-        <th colspan="2">Random split (same people in train &amp; test)</th>
-        <th colspan="2" class="honest">Subject-wise (unseen people) ✓ honest</th></tr>
-    <tr><th>Balanced accuracy</th><th>AUC</th><th class="honest">Balanced accuracy</th><th class="honest">AUC</th></tr></thead><tbody>`;
-  for (const fs of DET_SETS) for (const [m, mName] of DET_MODELS) {
-    const r = R[`${fs} | ${m} | RANDOM`] || {}, sw = R[`${fs} | ${m} | SUBJECT-WISE`] || {};
-    const hc = fs === "PHYSIO" ? "honest chance" : "honest";
-    h += `<tr><td class="rowh">${esc(fs)}</td><td>${esc(mName)}</td>
-      <td>${fmt3(r.balanced_accuracy)}</td><td>${fmt3(r.auc)}</td>
-      <td class="${hc}">${fmt3(sw.balanced_accuracy)}</td><td class="${hc}">${fmt3(sw.auc)}</td></tr>`;
-  }
-  return h + "</tbody></table>";
-}
-function detUnavailable() {
-  $("detUnavailable").style.display = "block";
-  $("detEvalPanel").style.display = "none"; $("detLivePanel").style.display = "none";
-}
-async function loadDetection() {
-  let res, list;
-  try { [res, list] = await Promise.all([api("/detection/results"), api("/detection/samples")]); }
-  catch (e) { $("detEval").innerHTML = `<div class="error">${esc(e.message)}</div>`; $("detLiveHead").textContent = ""; return; }
-  if (!res || res.available === false || !list || list.available === false) { detUnavailable(); return; }
-  const P = (res.results || {}).primary_falls_vs_daily_activities || {}, S = (res.results || {}).secondary_falls_vs_all || {};
-  $("detEval").classList.remove("muted");
-  $("detEval").innerHTML = `<p style="margin-top:0">Primary analysis: falls vs daily activities (standing, sitting, walking), 2 s windows, pre-registered, all results reported.</p>
-    ${detTable(P)}
-    <div class="det-callout">Physiology alone recognises the person, not the fall — it collapses to chance on new people.</div>
-    <img class="det-chart" src="${API}/detection/chart" alt="PIFv3 fall detection results chart" onerror="this.remove()">
-    <p class="note">Dhaliwal et al. 2024 report &gt;95% accuracy on IMU data. Model trained on a CPU in minutes — no GPU.</p>
-    <details class="det-sec"><summary>Secondary analysis (falls vs all activities)</summary>${detTable(S)}</details>`;
-  $("detLiveHead").classList.remove("muted");
-  $("detLiveHead").innerHTML = `<b>Model trained on ${esc(list.trained_on_participants)} participants; tested on ${esc((list.held_out_participants || []).length)} it never saw (held-out accuracy ${esc((Number(list.held_out_accuracy) * 100).toFixed(1))}%)</b>
-    <div class="note">${esc(list.model || "")}</div>`;
-  const n = {};
-  $("detSelect").innerHTML = (list.samples || []).map((s) => {
-    n[s.pid] = (n[s.pid] || 0) + 1;
-    return `<option value="${esc(s.sample_id)}">Participant ${esc(s.pid)} — window ${n[s.pid]}</option>`;
-  }).join("");
-  $("detSelect").addEventListener("change", () => { $("detOut").innerHTML = ""; });
-}
-function detChart(acc, gyr) {
-  const W = 1100, H = 170, L = 60, R = 16, T = 12, B = 30, iw = W - L - R, ih = H - T - B;
-  const N = Math.max(acc.length, gyr.length), dur = N / 10;       // ~10 Hz
-  const x = (i) => L + (N <= 1 ? 0 : (i * iw) / (N - 1));
-  function panel(vals, color, name) {
-    const lo = Math.min(...vals), hi = Math.max(...vals), pad = (hi - lo) * 0.1 || Math.abs(hi) * 0.05 || 1;
-    const a = lo - pad, b = hi + pad, y = (v) => T + ih - ((v - a) / (b - a)) * ih;
-    let g = `<rect x="${L}" y="${T}" width="${iw}" height="${ih}" fill="#fafbfe" stroke="#e5e7eb"/>`;
-    g += `<text x="${L - 6}" y="${T + 12}" text-anchor="end">${esc(Number(hi.toPrecision(3)))}</text>`;
-    g += `<text x="${L - 6}" y="${T + ih}" text-anchor="end">${esc(Number(lo.toPrecision(3)))}</text>`;
-    g += `<polyline points="${vals.map((v, i) => `${x(i)},${y(v)}`).join(" ")}" fill="none" stroke="${color}" stroke-width="3" stroke-linejoin="round"/>`;
-    g += `<text x="${L}" y="${H - 8}">0 s</text><text x="${L + iw}" y="${H - 8}" text-anchor="end">${esc(dur.toFixed(1))} s</text>`;
-    g += `<text x="${L + iw / 2}" y="${H - 8}" text-anchor="middle" font-weight="700" fill="${color}">${esc(name)}</text>`;
-    return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(name)}">${g}</svg>`;
-  }
-  return panel(acc, "#1d2f82", "Acceleration magnitude") + panel(gyr, "#b45309", "Gyroscope magnitude");
-}
-async function runDetector() {
-  const id = $("detSelect").value;
-  if (!id || detBusy) return;
-  detBusy = true; $("detRun").disabled = true; $("detOut").innerHTML = '<p class="muted">Running…</p>';
-  try {
-    const s = await api("/detection/sample/" + encodeURIComponent(id));
-    if (!s || s.available === false) { detUnavailable(); return; }
-    const fall = s.predicted === "FALL";
-    const truth = s.is_fall ? "FALL" : "NO FALL";
-    let h = `<div class="det-legend"><span><i style="background:#1d2f82"></i>Acceleration magnitude</span><span><i style="background:#b45309"></i>Gyroscope magnitude</span><span class="muted">2 s window</span></div>
-      ${detChart(s.acc || [], s.gyr || [])}
-      <div class="det-vitals"><span>Heart rate <b>${s.hr == null ? "—" : esc(s.hr) + " bpm"}</b></span><span>SpO₂ <b>${s.spo2 == null ? "—" : esc(s.spo2) + "%"}</b></span></div>
-      <div class="det-result"><span class="det-badge ${fall ? "fall" : "nofall"}">${fall ? "FALL DETECTED" : "NO FALL"} — ${pct(s.fall_probability)}</span>
-        <span class="muted">fall probability</span></div>
-      <div class="det-result"><span class="det-truth ${s.correct ? "ok" : "bad"}">${s.correct ? "✓" : "✗"} True label: ${esc(truth)} (${esc(s.label)})</span></div>`;
-    if (fall) h += `<div class="det-safety"><button class="warn" id="detSend">Send to safety system (as Lakshmi's ring)</button><span class="fallmsg" id="detSendMsg"></span></div>`;
-    $("detOut").innerHTML = h;
-    if (fall) $("detSend").addEventListener("click", () => sendToSafety(id));
-  } catch (e) { $("detOut").innerHTML = `<div class="error">${esc(e.message)}</div>`; }
-  finally { detBusy = false; $("detRun").disabled = false; }
-}
-async function sendToSafety(id) {
-  const btn = $("detSend"); btn.disabled = true; $("detSendMsg").textContent = "Logging fall event…";
-  try {
-    const d = await api("/detection/sample/" + encodeURIComponent(id) + "/send-to-safety", { method: "POST" });
-    if (!d || d.available === false) throw new Error("fall-detection data not available");
-    $("detSendMsg").textContent = "Fall event logged for Lakshmi. Select Lakshmi above and type 'I'm fine, just a bit shaken'.";
-    if (current && current.scenario === "recent_fall") loadScore();
-  } catch (e) { $("detSendMsg").textContent = "Could not log the fall event: " + e.message; btn.disabled = false; }
-}
-$("detRun").addEventListener("click", runDetector);
-loadDetection();
 </script>
 </body>
 </html>
