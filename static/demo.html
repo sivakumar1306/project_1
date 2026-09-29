@@ -90,6 +90,115 @@
   .fallmsg { font-weight: 600; color: #7f1010; }
   footer { text-align: center; color: var(--muted); font-size: 16px; padding: 10px 20px 30px; }
 </style>
+<style>
+  /* ── "How this score is calculated" walkthrough (self-contained, hw- prefix) ── */
+  .hw-open { margin-top: 16px; background: #fff; color: var(--navy); border: 2px solid var(--navy); border-radius: 10px;
+             padding: 10px 18px; font-size: 17px; font-weight: 700; cursor: pointer; }
+  .hw-open:hover { background: var(--chip); }
+  .hw-overlay { position: fixed; inset: 0; background: rgba(17, 24, 39, .55); z-index: 50; display: flex;
+                align-items: flex-start; justify-content: center; padding: 2vh 16px; overflow-y: auto; }
+  .hw-overlay[hidden] { display: none; }
+  .hw-panel { background: var(--panel); width: 100%; max-width: 1240px; border-radius: 16px; padding: 22px 28px 18px;
+              box-shadow: 0 20px 60px rgba(0, 0, 0, .3); }
+  .hw-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+  .hw-top h2 { font-size: 24px; text-transform: none; letter-spacing: 0; margin: 0; }
+  .hw-top .hw-sub { color: var(--muted); font-size: 17px; margin-top: 2px; }
+  .hw-close { background: none; border: 0; font-size: 30px; line-height: 1; cursor: pointer; color: var(--muted); padding: 0 4px; }
+  .hw-dots { display: flex; gap: 10px; margin: 16px 0 6px; flex-wrap: wrap; }
+  .hw-dot { border: 2px solid #c9d1ee; background: #fff; color: var(--navy); border-radius: 999px; padding: 6px 14px;
+            font-size: 16px; font-weight: 700; cursor: pointer; transition: background .3s, color .3s, border-color .3s; }
+  .hw-dot.on { background: var(--navy); color: #fff; border-color: var(--navy); }
+  .hw-dot.done { border-color: var(--navy); }
+  .hw-stage { min-height: 440px; padding: 8px 0 4px; }
+  .hw-h { font-size: 28px; font-weight: 800; color: var(--ink); margin: 6px 0 4px; }
+  .hw-cap { font-size: 19px; color: #374151; background: #f3f5fb; border-left: 5px solid var(--navy); padding: 10px 14px;
+            border-radius: 8px; margin: 8px 0 16px; }
+  .hw-empty { font-size: 20px; font-weight: 700; color: var(--low); background: var(--low-bg); padding: 12px 16px; border-radius: 10px; margin: 10px 0; }
+  .hw-note { font-size: 16px; color: var(--muted); margin-top: 8px; }
+  .hw-warn { background: #fff4d6; border: 2px solid #e0a800; color: #6b4e00; padding: 8px 14px; border-radius: 10px; font-weight: 700; margin-top: 12px; }
+  .hw-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 14px; margin-top: 10px; }
+  .hw-btn { background: #fff; color: var(--navy); border: 2px solid var(--navy); border-radius: 10px; padding: 9px 16px; font-size: 17px; font-weight: 700; cursor: pointer; }
+  .hw-btn.main { background: var(--navy); color: #fff; min-width: 120px; }
+  .hw-btn:disabled { opacity: .45; cursor: default; }
+  .hw-count { margin-left: auto; font-size: 17px; color: var(--muted); font-weight: 600; }
+  .hw-foot { font-size: 16px; color: var(--muted); margin: 12px 0 0; }
+  .hw-fade { animation: hwFade .45s ease-out both; }
+  @keyframes hwFade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  /* step 1 */
+  .hw-t1 { width: 100%; border-collapse: collapse; font-size: 20px; }
+  .hw-t1 th { text-align: left; font-size: 15px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; padding: 4px 10px; }
+  .hw-t1 td { padding: 9px 10px; border-top: 1px solid #eef0f4; }
+  .hw-t1 td.num { font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .hw-t1 td.base { color: var(--navy); }
+  .hw-t1 td.meta { font-size: 15px; color: var(--muted); }
+
+  /* shared rows */
+  .hw-row { display: grid; grid-template-columns: 210px 1fr 250px; gap: 16px; align-items: center; margin: 12px 0; font-size: 19px; }
+  .hw-row .lab { font-weight: 700; }
+  .hw-row .val { font-variant-numeric: tabular-nums; }
+  .hw-row .val small { display: block; font-size: 15px; color: var(--muted); }
+
+  /* step 2 gauges */
+  .hw-gauge { position: relative; height: 26px; background: linear-gradient(90deg, #fdf1e2, #fdecec); border-radius: 6px; }
+  .hw-gauge .dz { position: absolute; left: 0; top: 0; bottom: 0; background: repeating-linear-gradient(45deg, #d1d5db, #d1d5db 6px, #e5e7eb 6px, #e5e7eb 12px); border-radius: 6px 0 0 6px; }
+  .hw-gauge .full { position: absolute; top: -5px; bottom: -5px; width: 3px; background: var(--high); }
+  .hw-gauge .needle { position: absolute; top: -7px; width: 8px; height: 40px; margin-left: -4px; border-radius: 4px; background: var(--ink);
+                      left: 0; transition: left 1.3s cubic-bezier(.2, .8, .2, 1); box-shadow: 0 0 0 2px #fff; }
+  .hw-gauge .needle.calm { background: #6b7280; }
+  .hw-axis { position: relative; height: 22px; font-size: 14px; color: var(--muted); }
+  .hw-axis span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+
+  /* step 3 strain bars */
+  .hw-bar { height: 26px; background: #e8ebf2; border-radius: 6px; overflow: hidden; }
+  .hw-bar > i { display: block; height: 100%; width: 0; border-radius: 6px; transition: width 1.2s cubic-bezier(.2, .8, .2, 1); }
+  .hw-caprow { display: flex; gap: 18px; align-items: center; margin-bottom: 8px; }
+  .hw-caprow .hw-cap { flex: 1; margin: 0; }
+  .hw-ramp { flex: none; }
+  .hw-ramp text { font-size: 13px; }
+
+  /* step 4 layers */
+  .hw-layers { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .hw-card { border: 1px solid var(--line); border-left: 8px solid var(--c); border-radius: 12px; padding: 12px 16px; position: relative; background: #fff; }
+  .hw-card h3 { margin: 0 0 8px; font-size: 21px; color: var(--c); display: flex; align-items: center; gap: 8px; }
+  .hw-chip { display: flex; justify-content: space-between; gap: 10px; font-size: 16px; padding: 4px 8px; margin: 4px 0;
+             background: #f6f7fb; border-radius: 6px; opacity: 0; transform: translateY(-26px); transition: opacity .6s, transform .6s cubic-bezier(.2, .8, .2, 1); }
+  .hw-chip.in { opacity: 1; transform: none; }
+  .hw-chip.off { color: #9ca3af; text-decoration: line-through; }
+  .hw-lrow { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-top: 8px; font-size: 19px; }
+  .hw-lrow .big { font-size: 34px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .hw-later { opacity: 0; transition: opacity .6s; }
+  .hw-later.in { opacity: 1; }
+  .hw-info { position: relative; display: inline-block; }
+  .hw-info > button { border: 2px solid currentColor; background: #fff; color: inherit; border-radius: 50%; width: 26px; height: 26px;
+                      font-size: 15px; font-weight: 800; cursor: help; line-height: 1; padding: 0; }
+  .hw-tip { display: none; position: absolute; left: 0; top: 32px; z-index: 5; width: 330px; background: var(--ink); color: #fff;
+            font-size: 15px; font-weight: 400; padding: 10px 12px; border-radius: 8px; line-height: 1.45; }
+  .hw-info:hover .hw-tip, .hw-info:focus-within .hw-tip { display: block; }
+  .hw-rebal { font-size: 15px; color: var(--mod); font-weight: 700; }
+
+  /* step 5 stacked bar */
+  .hw-stack { position: relative; height: 64px; border-radius: 8px; overflow: hidden; margin: 30px 0 4px; border: 1px solid var(--line); }
+  .hw-stack .band { position: absolute; top: 0; bottom: 0; }
+  .hw-stack .blk { position: absolute; top: 10px; bottom: 10px; width: 0; border-right: 2px solid #fff; transition: width .7s ease-out; }
+  .hw-stack .mark { position: absolute; top: 0; bottom: 0; width: 4px; margin-left: -2px; background: var(--ink); opacity: 0; transition: left .9s ease-in-out, opacity .4s; }
+  .hw-scale { position: relative; height: 22px; font-size: 14px; color: var(--muted); }
+  .hw-scale span { position: absolute; transform: translateX(-50%); }
+  .hw-legend { display: flex; flex-wrap: wrap; gap: 8px 12px; margin: 10px 0; }
+  .hw-legend span { font-size: 17px; padding: 4px 10px; border-radius: 8px; background: #f6f7fb; opacity: 0; transition: opacity .5s; }
+  .hw-legend span.in { opacity: 1; }
+  .hw-legend i { display: inline-block; width: 14px; height: 14px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+  .hw-total { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-top: 12px; }
+  .hw-total .ctr { font-size: 64px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+  .hw-total .res { font-size: 30px; font-weight: 800; }
+  .hw-toggle { margin-top: 12px; }
+  .hw-toggle[aria-pressed="true"] { background: #f3eefc; border-color: #7c3aed; color: #3f2a7a; }
+
+  @media (max-width: 900px) { .hw-row { grid-template-columns: 1fr; gap: 4px; } .hw-layers { grid-template-columns: 1fr; } .hw-ramp { display: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .hw-overlay *, .hw-overlay *::before, .hw-overlay *::after { transition: none !important; animation: none !important; }
+  }
+</style>
 </head>
 <body>
 <header>
@@ -104,6 +213,7 @@
     <div class="panel" id="scorePanel">
       <h2>Fall risk today</h2>
       <div id="scoreBody" class="muted">Loading…</div>
+      <button type="button" class="hw-open" id="hwOpen">▶ Show how this score is calculated</button>
     </div>
     <div class="panel">
       <h2>Four layers</h2>
@@ -142,6 +252,26 @@
     </div>
   </section>
 </main>
+
+<div class="hw-overlay" id="hwOverlay" hidden role="dialog" aria-modal="true" aria-labelledby="hwTitle">
+  <div class="hw-panel">
+    <div class="hw-top">
+      <div><h2 id="hwTitle">How this score is calculated</h2><div class="hw-sub">Fall-risk engine, step by step, for <b id="hwUser"></b></div></div>
+      <button type="button" class="hw-close" id="hwClose" aria-label="Close">✕</button>
+    </div>
+    <div id="hwNotice"></div>
+    <div class="hw-dots" id="hwDots" aria-label="Steps"></div>
+    <div class="hw-stage" id="hwStage" aria-live="polite"></div>
+    <div class="hw-controls">
+      <button type="button" class="hw-btn" id="hwPrev">◀ Previous</button>
+      <button type="button" class="hw-btn main" id="hwPlay">▶ Play</button>
+      <button type="button" class="hw-btn" id="hwNext">Next ▶</button>
+      <button type="button" class="hw-btn" id="hwReplay">↺ Replay</button>
+      <span class="hw-count" id="hwCount"></span>
+    </div>
+    <p class="hw-foot">Deterministic calculation: the same data always gives the same score. The AI assistant only explains these numbers; it never computes them.</p>
+  </div>
+</div>
 
 <footer>Screening estimate, not a diagnosis. Scores come from the evaluated deterministic engine; the AI only explains them.</footer>
 
@@ -376,6 +506,356 @@ $("send").addEventListener("click", () => send($("input").value));
 $("input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send($("input").value); } });
 $("fallBtn").addEventListener("click", fallNow);
 loadUsers();
+</script>
+<script>
+/* ── "How this score is calculated" walkthrough ──────────────────────────────
+   Self-contained: own script tag, own hw- ids/classes, reads only the global `current`
+   (selected demo user) from the page script. Every number comes from
+   GET /api/v1/fall-risk/{user_id}/breakdown; nothing is computed here except layout. */
+(function () {
+  "use strict";
+  const byId = (id) => document.getElementById(id);
+  const openBtn = byId("hwOpen"), overlay = byId("hwOverlay"), stage = byId("hwStage");
+  if (!openBtn || !overlay || !stage) return;
+  const RM = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const TITLES = ["Your personal normal", "How unusual is today?", "Strain 0–100",
+                  "Four layers, evidence-derived weights", "Adding it up"];
+  const STEP_MS = [4500, 4500, 4000, 6500, 7500];
+  const LAYER_COLOR = { FH: "#1d2f82", MO: "#0e7490", P: "#7c3aed", RC: "#be185d" };
+  const GAUGE_MAX = 4;
+  let data = null, step = 0, playing = false, timer = null, gen = 0, noCycle = false;
+
+  function h(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+  const fx = (v, n) => Number(v).toFixed(n);
+  const capital = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
+  const pct = (v, max) => Math.max(0, Math.min(100, (v / max) * 100));
+  function unitText(u) { return !u ? "" : (u.startsWith("/") ? u : " " + u); }
+  function zDp(z, dz) { return Math.abs(Number(fx(z, 2)) - dz) < 1e-9 ? 3 : 2; }
+  function totalDp(raw) { return fx(raw, 2).endsWith(".50") ? 3 : 2; }    // never show x.50 next to its rounding
+
+  /* timing helpers: every callback is dropped when the step changes (gen) */
+  function after(ms, fn) {
+    const g = gen;
+    if (RM) { fn(); return; }
+    setTimeout(() => { if (g === gen) fn(); }, ms);
+  }
+  function frame(fn) { const g = gen; requestAnimationFrame(() => requestAnimationFrame(() => { if (g === gen) fn(); })); }
+  function tween(el, to, o) {
+    o = o || {};
+    const g = gen, from = o.from == null ? 0 : o.from, dur = o.dur == null ? 1000 : o.dur, nd = o.ndp || 0;
+    const show = (v) => { el.textContent = (o.prefix || "") + fx(v, nd) + (o.suffix || ""); };
+    if (RM || !isFinite(to)) { show(to); if (o.done) o.done(); return; }
+    show(from);
+    const t0 = performance.now() + (o.delay || 0);
+    function tick(t) {
+      if (g !== gen) return;
+      const p = Math.min(1, Math.max(0, (t - t0) / dur)), e = 1 - Math.pow(1 - p, 3);
+      if (p < 1) { show(from + (to - from) * e); requestAnimationFrame(tick); }
+      else { show(to); if (o.done) o.done(); }
+    }
+    requestAnimationFrame(tick);
+  }
+  function countAll(root) {
+    root.querySelectorAll("[data-to]").forEach((el) => tween(el, Number(el.dataset.to), {
+      ndp: Number(el.dataset.ndp || 0), delay: Number(el.dataset.delay || 0), dur: Number(el.dataset.dur || 1000),
+      suffix: el.dataset.suffix || "", prefix: el.dataset.prefix || "" }));
+  }
+  function num(v, ndp, extra) {
+    const a = extra || {};
+    return `<span data-to="${h(v)}" data-ndp="${ndp}"${a.delay ? ` data-delay="${a.delay}"` : ""}${a.dur ? ` data-dur="${a.dur}"` : ""}>${h(fx(RM ? v : 0, ndp))}</span>`;
+  }
+
+  /* ── steps ──────────────────────────────────────────────────────────────── */
+  const present = () => data.features.filter((f) => f.present);
+  const missingNote = () => {
+    const miss = data.features.filter((f) => !f.present);
+    return miss.length ? `<div class="hw-note">Not used today: ${miss.map((f) => `${h(f.label)} (${h(f.reason)})`).join(", ")}.</div>` : "";
+  };
+  const calmMsg = '<div class="hw-empty">All readings within the personal normal range</div>';
+
+  function step1() {
+    const c = data.constants, rows = present();
+    let t = `<div class="hw-cap">Each reading is compared with this person's own last ${h(c.baseline_days)} days, not a population average.</div>`;
+    if (!rows.length) return t + '<div class="hw-empty">No recent readings to compare.</div>' + missingNote();
+    t += `<table class="hw-t1"><thead><tr><th>Reading</th><th>Today</th><th>Personal normal</th><th>Baseline</th></tr></thead><tbody>`;
+    rows.forEach((f, i) => {
+      const u = unitText(f.unit), d = i * 90;
+      t += `<tr class="hw-fade" style="animation-delay:${RM ? 0 : d}ms"><td><b>${h(capital(f.label))}</b></td>
+        <td class="num">${num(f.value, f.ndp, { delay: d })}${h(u)}</td>
+        <td class="num base">${num(f.baseline, f.ndp, { delay: d + 300 })}${h(u)}</td>
+        <td class="meta">median of ${h(f.n_baseline_days)} days · ${h(f.baseline_mode)}</td></tr>`;
+    });
+    return t + "</tbody></table>" + missingNote();
+  }
+
+  function step2() {
+    const c = data.constants, dz = c.dead_zone_z, fz = c.full_strain_z, rows = present();
+    let t = `<div class="hw-cap">z = how many 'normal wobbles' today is away from normal. Below ${h(dz)} is ignored as noise.</div>`;
+    if (!rows.length) return t + calmMsg;
+    if (rows.every((f) => f.z_risk < dz)) t += calmMsg;
+    const ticks = [0, dz, 1, 2, fz, GAUGE_MAX].filter((v, i, a) => a.indexOf(v) === i);
+    t += `<div class="hw-row" style="margin-bottom:0"><div></div><div class="hw-axis">${ticks.map((v) =>
+      `<span style="left:${pct(v, GAUGE_MAX)}%">${v === fz ? `${h(v)} = full strain` : h(v)}</span>`).join("")}</div><div></div></div>`;
+    rows.forEach((f) => {
+      const risky = f.z_risk >= dz;
+      const dirWord = f.risk_direction === "low" ? "lower than normal" : "higher than normal";
+      const desc = f.z_risk > 0 ? dirWord : "in the safe direction";
+      t += `<div class="hw-row"><div class="lab">${h(capital(f.label))}</div>
+        <div class="hw-gauge"><div class="dz" style="width:${pct(dz, GAUGE_MAX)}%"></div>
+          <div class="full" style="left:${pct(fz, GAUGE_MAX)}%"></div>
+          <div class="needle${risky ? "" : " calm"}" data-left="${pct(Math.max(0, f.z_risk), GAUGE_MAX)}"></div></div>
+        <div class="val"><b>z = ${num(f.z_risk, zDp(f.z_risk, dz), { dur: 1300 })}</b>${f.z_risk > GAUGE_MAX ? " (off the scale)" : ""}<small>${h(desc)}${risky ? "" : " · treated as noise"}</small></div></div>`;
+    });
+    return t + missingNote();
+  }
+
+  function rampSvg(dz, fz) {
+    const W = 250, H = 120, L = 30, B = 22, T = 8, iw = W - L - 10, ih = H - B - T, zmax = GAUGE_MAX;
+    const x = (z) => L + (z / zmax) * iw, y = (s) => T + ih - (s / 100) * ih;
+    return `<svg class="hw-ramp" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Strain versus z">
+      <line x1="${L}" y1="${y(0)}" x2="${x(zmax)}" y2="${y(0)}" stroke="#9ca3af"/><line x1="${L}" y1="${T}" x2="${L}" y2="${y(0)}" stroke="#9ca3af"/>
+      <polyline points="${x(0)},${y(0)} ${x(dz)},${y(0)} ${x(fz)},${y(100)} ${x(zmax)},${y(100)}" fill="none" stroke="#1d2f82" stroke-width="3"/>
+      <text x="${x(dz)}" y="${H - 6}" text-anchor="middle">${h(dz)}</text><text x="${x(fz)}" y="${H - 6}" text-anchor="middle">${h(fz)}</text>
+      <text x="${L + iw}" y="${H - 6}" text-anchor="end">z</text><text x="${L - 4}" y="${y(100) + 5}" text-anchor="end">100</text>
+      <text x="${L - 4}" y="${y(0) + 4}" text-anchor="end">0</text></svg>`;
+  }
+
+  function strainRow(label, strain, color, sub) {
+    return `<div class="hw-row"><div class="lab">${h(label)}</div>
+      <div class="hw-bar"><i style="background:${color}" data-width="${pct(strain, 100)}"></i></div>
+      <div class="val"><b>${num(strain, 1, { dur: 1200 })}</b> / 100<small>${sub}</small></div></div>`;
+  }
+  function step3() {
+    const c = data.constants, rows = present(), nf = data.near_falls;
+    let t = `<div class="hw-caprow"><div class="hw-cap">Strain rises in a straight line from z = ${h(c.dead_zone_z)} (0) to z = ${h(c.full_strain_z)} (100).</div>` +
+      rampSvg(c.dead_zone_z, c.full_strain_z) + "</div>";
+    const any = rows.some((f) => f.strain > 0) || nf.count > 0;
+    if (!any) t += calmMsg;
+    rows.forEach((f) => {
+      const sub = `z = ${h(fx(f.z_risk, zDp(f.z_risk, c.dead_zone_z)))}` + (f.strain_floor_applied ? " · low-SpO2 floor rule applied" : "");
+      t += strainRow(capital(f.label), f.strain, LAYER_COLOR[f.layer], sub);
+    });
+    if (nf.count > 0) t += strainRow("Near-fall events", nf.strain, LAYER_COLOR.MO, `${h(nf.count)} in the last 14 days`);
+    return t + missingNote();
+  }
+
+  function layerCard(l, idx) {
+    const col = LAYER_COLOR[l.key];
+    const base = idx * 250;
+    let chips = "";
+    let k = 0;
+    const chip = (html, off) => `<div class="hw-chip${off ? " off" : ""}" data-delay="${base + 120 * k++}">${html}</div>`;
+    if (l.key === "FH") {
+      const fh = data.fall_history;
+      chips += chip(`<span>Falls in past year: <b>${h(fh.falls_365)}</b></span><span>→ risk ${h(fx(fh.fh_risk, 0))}</span>`);
+    } else {
+      data.features.filter((f) => f.layer === l.key).forEach((f) => {
+        chips += f.present
+          ? chip(`<span>${h(capital(f.label))}</span><span>strain ${h(fx(f.strain, 1))} × share ${h(fx(f.weight_in_layer, 2))}</span>`)
+          : chip(`<span>${h(capital(f.label))}</span><span>${h(f.reason)}</span>`, true);
+      });
+      if (l.key === "MO") {
+        const nf = data.near_falls;
+        chips += chip(`<span>Near-fall events (14 days): ${h(nf.count)}</span><span>strain ${h(fx(nf.strain, 1))} × share ${h(fx(nf.weight_in_layer, 2))}</span>`);
+      }
+    }
+    const rebal = Math.abs(l.coverage_pct - 100) > 0.05;
+    const wTxt = rebal
+      ? `× weight <s>${h(fx(l.base_weight, 2))}</s> <b>${h(fx(l.adjusted_weight, 2))}</b> <span class="hw-rebal">rebalanced for missing data (${h(fx(l.coverage_pct, 0))}% coverage)</span>`
+      : `× weight <b>${h(fx(l.adjusted_weight, 2))}</b>`;
+    const tip = `${h(l.name)} evidence: ${h(l.ratio_type)} ${h(l.evidence_ratio)} — ${h(l.source)}.<br>
+      ln(${h(l.evidence_ratio)}) = ${h(fx(l.ln_ratio, 3))}.<br>Base weight = ln(ratio) ÷ sum of all four = ${h(fx(l.base_weight, 3))}.`;
+    return `<div class="hw-card" style="--c:${col}">
+      <h3>${h(l.name)} <span class="hw-info"><button type="button" aria-label="Evidence for ${h(l.name)}">i</button><span class="hw-tip" role="tooltip">${tip}</span></span></h3>
+      ${chips}
+      <div class="hw-lrow"><span>layer risk</span><span class="big">${num(l.risk, 1, { delay: RM ? 0 : base + 1100, dur: 900 })}</span></div>
+      <div class="hw-lrow hw-later" data-delay="${base + 2300}">${wTxt}</div>
+      <div class="hw-lrow hw-later" data-delay="${base + 3000}">= <b style="color:${col};font-size:24px">${h(fx(l.points, 1))} points</b></div></div>`;
+  }
+  function step4() {
+    return `<div class="hw-cap">Layer risk = the weighted average of its strains. Each layer's weight comes from the published fall evidence
+      (hover the ⓘ), and missing data rebalances the weights so they still add up to 1.</div>
+      <div class="hw-layers">${data.layers.map(layerCard).join("")}</div>`;
+  }
+
+  function blocks() {
+    const out = [];
+    data.features.forEach((f) => { if (f.present && f.points > 0) out.push({ label: f.label, pts: f.points, layer: f.layer }); });
+    if (data.near_falls.points > 0) out.push({ label: "near-fall events", pts: data.near_falls.points, layer: "MO" });
+    if (data.fall_history.points > 0) out.push({ label: "falls in past year", pts: data.fall_history.points, layer: "FH" });
+    return out.sort((a, b) => b.pts - a.pts);
+  }
+  function resultHtml(score, tier, prefix) {
+    return `${prefix}<span class="${h(tier)}">${h(score)}</span> <span class="badge bg-${h(tier)}">${h(tier)}</span>`;
+  }
+  function step5() {
+    const T = data.total, bl = blocks(), tiers = T.tiers;
+    const fills = { LOW: "#e7f5ec", MODERATE: "#fdf1e2", HIGH: "#fdecec" };
+    let lo = 0, bands = "";
+    tiers.forEach((t) => {
+      const hi = Math.min(100, t.below);
+      bands += `<div class="band" style="left:${lo}%;width:${hi - lo}%;background:${fills[t.name] || "#f3f4f6"}"></div>`;
+      lo = hi;
+    });
+    let cum = 0, blk = "", leg = "";
+    bl.forEach((b, i) => {
+      blk += `<div class="blk" style="left:${pct(cum, 100)}%;background:${LAYER_COLOR[b.layer]}" data-width="${pct(b.pts, 100)}" data-delay="${i * 450}" title="+${h(fx(b.pts, 1))} ${h(b.label)}"></div>`;
+      leg += `<span data-delay="${i * 450}"><i style="background:${LAYER_COLOR[b.layer]}"></i>+${h(fx(b.pts, 1))} ${h(b.label)}</span>`;
+      cum += b.pts;
+    });
+    const scale = [0].concat(T.thresholds, [100]).map((v) => `<span style="left:${v}%">${h(v)}</span>`).join("");
+    const labels = tiers.map((t, i) => {
+      const a = i ? tiers[i - 1].below : 0, b = Math.min(100, t.below);
+      return `<span style="left:${(a + b) / 2}%;top:-26px;font-weight:700;color:var(--muted)">${h(t.name)}</span>`;
+    }).join("");
+    let t = `<div class="hw-cap">Each contribution = layer weight × the feature's share of its layer × its strain. The pieces add up exactly to the score.</div>`;
+    if (!bl.length) t += calmMsg;
+    t += `<div class="hw-stack">${bands}${blk}<div class="mark" id="hwMark" style="left:0"></div></div>
+      <div class="hw-scale">${scale}</div><div class="hw-scale" style="height:0">${labels}</div>
+      <div class="hw-legend">${leg}</div>
+      <div class="hw-total"><span class="ctr" id="hwCtr">${h(fx(RM ? T.frs_raw : 0, totalDp(T.frs_raw)))}</span><span class="res" id="hwRes"></span></div>
+      <div class="hw-note">Labels are rounded to 0.1; the total uses the unrounded values.</div>`;
+    if (data.cycle && data.cycle.applied && data.cycle.score_without_correction != null) {
+      t += `<button type="button" class="hw-btn hw-toggle" id="hwCycle" aria-pressed="false">Without cycle correction</button>
+        <span class="hw-note" style="margin-left:10px">${h(capital(data.cycle.phase))} phase, day ${h(data.cycle.day)}: physiology is compared with same-phase days.</span>`;
+    }
+    return t;
+  }
+  function start5() {
+    const T = data.total, bl = blocks(), dp = totalDp(T.frs_raw);
+    const dur = RM ? 0 : Math.max(1200, bl.length * 450 + 700);
+    const mark = byId("hwMark"), ctr = byId("hwCtr"), res = byId("hwRes");
+    tween(ctr, T.frs_raw, { ndp: dp, dur: dur, done: () => {
+      res.innerHTML = resultHtml(T.frs, T.tier, "points → rounds to ");
+      mark.style.left = pct(T.frs_raw, 100) + "%"; mark.style.opacity = 1;
+    } });
+    const cyc = byId("hwCycle");
+    if (cyc) cyc.addEventListener("click", () => {
+      noCycle = !noCycle;
+      cyc.setAttribute("aria-pressed", String(noCycle));
+      const wo = data.cycle.score_without_correction;
+      const from = parseFloat(ctr.textContent) || 0;
+      res.innerHTML = "";
+      if (noCycle) {
+        tween(ctr, wo, { from: from, ndp: 0, dur: 900, done: () => {
+          const tw = data.cycle.tier_without_correction;
+          res.innerHTML = `<span class="badge bg-${h(tw)}">${h(tw)}</span> without cycle correction`;
+          mark.style.left = pct(wo, 100) + "%"; } });
+      } else {
+        tween(ctr, T.frs_raw, { from: from, ndp: dp, dur: 900, done: () => {
+          res.innerHTML = resultHtml(T.frs, T.tier, "points → rounds to ");
+          mark.style.left = pct(T.frs_raw, 100) + "%"; } });
+      }
+    });
+  }
+
+  const RENDER = [step1, step2, step3, step4, step5];
+
+  /* ── player ─────────────────────────────────────────────────────────────── */
+  function render() {
+    gen++; clearTimeout(timer); noCycle = false;
+    byId("hwDots").querySelectorAll(".hw-dot").forEach((d, i) => {
+      d.classList.toggle("on", i === step); d.classList.toggle("done", i < step);
+      d.setAttribute("aria-current", i === step ? "step" : "false");
+    });
+    byId("hwCount").textContent = `Step ${step + 1} of 5`;
+    byId("hwPrev").disabled = step === 0;
+    byId("hwNext").disabled = step === 4;
+    stage.innerHTML = `<div class="hw-h hw-fade">${step + 1}. ${h(TITLES[step])}</div>` + RENDER[step]();
+    countAll(stage);
+    const setGrow = (el) => {
+      if (el.dataset.width != null) el.style.width = el.dataset.width + "%";
+      if (el.dataset.left != null) el.style.left = el.dataset.left + "%";
+      el.classList.add("in");
+    };
+    frame(() => stage.querySelectorAll("[data-width],[data-left],.hw-chip,.hw-later,.hw-legend span").forEach((el) => {
+      const d = Number(el.dataset.delay || 0);
+      if (d && !RM) after(d, () => setGrow(el)); else setGrow(el);
+    }));
+    if (step === 4) frame(start5);
+    updatePlay();
+    if (playing) {
+      if (step < 4) timer = setTimeout(() => { step++; render(); }, STEP_MS[step]);
+      else { playing = false; updatePlay(); }
+    }
+  }
+  function updatePlay() { byId("hwPlay").textContent = playing ? "❚❚ Pause" : "▶ Play"; }
+  function go(i, keepPlaying) { step = Math.max(0, Math.min(4, i)); if (!keepPlaying) playing = false; render(); }
+  function togglePlay() {
+    if (!data) return;
+    if (playing) { playing = false; clearTimeout(timer); updatePlay(); return; }
+    playing = true;
+    if (step === 4) step = 0;
+    render();
+  }
+
+  function notice() {
+    const n = byId("hwNotice");
+    n.innerHTML = data && data.stale && data.enough_history
+      ? `<div class="hw-warn">⚠ Ring data is ${h(data.data_age_days)} days old — the calculation uses the latest available readings.</div>` : "";
+  }
+  function setControls(on) { ["hwPrev", "hwPlay", "hwNext", "hwReplay"].forEach((id) => { byId(id).disabled = !on; }); }
+
+  async function open() {
+    const user = typeof current !== "undefined" ? current : null;
+    if (!user) return;
+    gen++; clearTimeout(timer); data = null; step = 0; playing = false;
+    byId("hwUser").textContent = user.name;
+    byId("hwNotice").innerHTML = "";
+    stage.innerHTML = '<p class="muted" style="font-size:19px">Loading the calculation…</p>';
+    setControls(false);
+    overlay.hidden = false;
+    document.body.style.overflow = "hidden";
+    byId("hwClose").focus();
+    const uid = user.id;
+    try {
+      const res = await fetch("/api/v1/fall-risk/" + encodeURIComponent(uid) + "/breakdown");
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((body && body.error) || "Request failed (" + res.status + ")");
+      if (overlay.hidden || typeof current === "undefined" || !current || current.id !== uid) return;
+      data = body;
+    } catch (e) {
+      stage.innerHTML = `<div class="error">${h(e instanceof TypeError ? "Cannot reach the server. Is uvicorn running?" : e.message)}</div>`;
+      return;
+    }
+    notice();
+    if (!data.enough_history) { stage.innerHTML = `<p style="font-size:19px">${h(data.message)}</p>`; return; }
+    setControls(true);
+    playing = !RM;
+    render();
+  }
+  function close() {
+    if (overlay.hidden) return;
+    gen++; clearTimeout(timer); playing = false;
+    overlay.hidden = true;
+    document.body.style.overflow = "";
+    openBtn.focus();
+  }
+
+  byId("hwDots").innerHTML = TITLES.map((t, i) => `<button type="button" class="hw-dot" title="${h(t)}">${i + 1}</button>`).join("");
+  byId("hwDots").addEventListener("click", (e) => {
+    const b = e.target.closest(".hw-dot");
+    if (b && data && data.enough_history) go([...b.parentNode.children].indexOf(b));
+  });
+  openBtn.addEventListener("click", open);
+  byId("hwClose").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  byId("hwPrev").addEventListener("click", () => go(step - 1));
+  byId("hwNext").addEventListener("click", () => go(step + 1));
+  byId("hwPlay").addEventListener("click", togglePlay);
+  byId("hwReplay").addEventListener("click", () => { playing = !RM; go(0, true); });
+  document.addEventListener("keydown", (e) => {
+    if (overlay.hidden) return;
+    if (e.key === "Escape") { close(); return; }
+    if (!data || !data.enough_history) return;
+    if (e.key === "ArrowRight") { e.preventDefault(); go(step + 1); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); go(step - 1); }
+  });
+  const sel = byId("user");
+  if (sel) sel.addEventListener("change", close);
+})();
 </script>
 </body>
 </html>
