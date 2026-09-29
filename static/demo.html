@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fall-Risk Prediction — Live Demo</title>
+<style>
+  :root {
+    --bg: #f4f6fb; --panel: #ffffff; --ink: #111827; --muted: #4b5563; --line: #d7dce5;
+    --navy: #1d2f82; --low: #1a7f37; --mod: #b45309; --high: #c62828;
+    --low-bg: #e7f5ec; --mod-bg: #fdf1e2; --high-bg: #fdecec; --chip: #eef1fa;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 18px/1.45 "Segoe UI", Calibri, Arial, sans-serif; }
+  header { background: var(--navy); color: #fff; padding: 18px 28px; display: flex;
+           align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: .2px; }
+  header label { font-size: 18px; margin-right: 8px; }
+  select { font-size: 18px; padding: 8px 12px; border-radius: 8px; border: 0; min-width: 320px; }
+  main { max-width: 1180px; margin: 0 auto; padding: 22px 20px 40px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; margin-bottom: 18px; }
+  h2 { margin: 0 0 12px; font-size: 20px; color: var(--navy); text-transform: uppercase; letter-spacing: .6px; }
+  .grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 18px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } select { min-width: 220px; } }
+  .muted { color: var(--muted); }
+  .error { background: var(--high-bg); color: var(--high); border: 1px solid #f3b4b4; padding: 12px 14px; border-radius: 10px; }
+
+  /* score card */
+  .score-row { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+  .score { font-size: 96px; font-weight: 800; line-height: 1; }
+  .score small { font-size: 32px; color: var(--muted); font-weight: 600; }
+  .badge { display: inline-block; padding: 6px 16px; border-radius: 999px; font-weight: 800; font-size: 22px; color: #fff; }
+  .LOW { color: var(--low); } .MODERATE { color: var(--mod); } .HIGH { color: var(--high); }
+  .bg-LOW { background: var(--low); } .bg-MODERATE { background: var(--mod); } .bg-HIGH { background: var(--high); }
+  .facts { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 12px; font-size: 19px; }
+  .facts b { color: var(--ink); }
+  .stale { margin-top: 14px; background: #fff4d6; border: 2px solid #e0a800; color: #6b4e00; padding: 10px 14px;
+           border-radius: 10px; font-weight: 700; }
+  .cycle { margin-top: 14px; background: #f3eefc; border: 1px solid #cbbcf0; color: #3f2a7a; padding: 10px 14px; border-radius: 10px; }
+
+  /* layers */
+  .layer { display: grid; grid-template-columns: 130px 1fr 190px; align-items: center; gap: 12px; margin: 10px 0; }
+  .bar { height: 22px; background: #e8ebf2; border-radius: 6px; overflow: hidden; }
+  .bar > span { display: block; height: 100%; border-radius: 6px; }
+  .layer .w { font-size: 16px; color: var(--muted); text-align: right; white-space: nowrap; }
+
+  /* contributors */
+  ul.plain { list-style: none; padding: 0; margin: 0; }
+  ul.plain li { padding: 9px 0; border-bottom: 1px solid #eef0f4; display: flex; justify-content: space-between; gap: 12px; }
+  ul.plain li:last-child { border-bottom: 0; }
+  .pts { font-weight: 800; color: var(--navy); white-space: nowrap; }
+  .note { font-size: 15px; color: var(--muted); margin-top: 8px; }
+
+  /* trend */
+  svg text { font: 14px "Segoe UI", Calibri, Arial, sans-serif; fill: #374151; }
+
+  /* chat */
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .chip { background: var(--chip); color: var(--navy); border: 1px solid #c9d1ee; border-radius: 999px;
+          padding: 7px 14px; font-size: 16px; cursor: pointer; }
+  .chip:hover { background: #dde3f7; }
+  .chat { height: 460px; overflow-y: auto; border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: #fafbfe; }
+  .msg { margin: 10px 0; display: flex; }
+  .msg.user { justify-content: flex-end; }
+  .bubble { max-width: 78%; padding: 12px 15px; border-radius: 14px; white-space: pre-wrap; word-wrap: break-word; }
+  .user .bubble { background: var(--navy); color: #fff; border-bottom-right-radius: 4px; }
+  .bot .bubble { background: #fff; border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+  .bot .bubble.emergency { background: var(--high-bg); border: 2px solid var(--high); color: #7f1010; font-weight: 600; }
+  .bot .bubble.err { background: #fff; border: 1px dashed var(--high); color: var(--high); }
+  .composer { display: flex; gap: 10px; margin-top: 12px; }
+  .composer input { flex: 1; font-size: 18px; padding: 12px 14px; border: 1px solid #b9c1d3; border-radius: 10px; }
+  button.primary { background: var(--navy); color: #fff; border: 0; border-radius: 10px; padding: 12px 22px; font-size: 18px; font-weight: 700; cursor: pointer; }
+  button.primary:disabled { opacity: .55; cursor: default; }
+  button.warn { background: var(--high); color: #fff; border: 0; border-radius: 10px; padding: 10px 16px; font-size: 16px; font-weight: 700; cursor: pointer; }
+  .typing { display: inline-flex; gap: 5px; }
+  .typing i { width: 8px; height: 8px; background: #9aa3b5; border-radius: 50%; animation: blink 1.2s infinite; }
+  .typing i:nth-child(2) { animation-delay: .2s; } .typing i:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+  .mini { margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #fff; white-space: normal; font-size: 16px; }
+  .mini .big { font-size: 30px; font-weight: 800; margin-right: 8px; }
+  details.how { margin-top: 8px; font-size: 15px; white-space: normal; font-weight: 400; color: var(--ink); }
+  details.how summary { cursor: pointer; color: var(--navy); font-weight: 600; }
+  details.how table { border-collapse: collapse; margin-top: 6px; }
+  details.how td { padding: 3px 10px 3px 0; vertical-align: top; }
+  .sig { display: inline-block; padding: 2px 10px; border-radius: 999px; margin: 0 6px 4px 0; font-weight: 700; font-size: 14px; }
+  .sig.on { background: var(--high); color: #fff; }
+  .sig.off { background: #e5e7eb; color: #4b5563; }
+  .fallbox { display: none; margin-top: 12px; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .fallmsg { font-weight: 600; color: #7f1010; }
+  footer { text-align: center; color: var(--muted); font-size: 16px; padding: 10px 20px 30px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Fall-Risk Prediction — Live Demo</h1>
+  <div><label for="user">User</label><select id="user" aria-label="Demo user"></select></div>
+</header>
+
+<main>
+  <div id="loadError" class="error" style="display:none"></div>
+
+  <section class="grid">
+    <div class="panel" id="scorePanel">
+      <h2>Fall risk today</h2>
+      <div id="scoreBody" class="muted">Loading…</div>
+    </div>
+    <div class="panel">
+      <h2>Four layers</h2>
+      <div id="layers" class="muted">—</div>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="panel">
+      <h2>Why this score</h2>
+      <ul class="plain" id="contributors"></ul>
+      <div class="note" id="contribNote"></div>
+    </div>
+    <div class="panel">
+      <h2>Personal patterns</h2>
+      <ul class="plain" id="correlations"></ul>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Trend</h2>
+    <div id="trend" class="muted">—</div>
+  </section>
+
+  <section class="panel">
+    <h2>AI assistant</h2>
+    <div class="chips" id="chips"></div>
+    <div class="chat" id="chat" aria-live="polite"></div>
+    <div class="composer">
+      <input id="input" type="text" maxlength="1000" placeholder="Ask about your fall risk…" autocomplete="off">
+      <button class="primary" id="send">Send</button>
+    </div>
+    <div class="fallbox" id="fallbox">
+      <button class="warn" id="fallBtn">Simulate ring fall event</button>
+      <span class="fallmsg" id="fallMsg"></span>
+    </div>
+  </section>
+</main>
+
+<footer>Screening estimate, not a diagnosis. Scores come from the evaluated deterministic engine; the AI only explains them.</footer>
+
+<script>
+"use strict";
+const API = "/api/v1";
+const CHAT_TIMEOUT_MS = 60000;
+const PROMPTS = ["What's my fall risk today?", "Why is my fall risk high?", "I feel dizzy when I stand up",
+                 "I fell asleep on the couch last night", "I fell and can't get up", "I'm fine, just a bit shaken"];
+const TIER_VAR = { LOW: "--low", MODERATE: "--mod", HIGH: "--high" };
+const $ = (id) => document.getElementById(id);
+let users = [], current = null, busy = false, tiers = [];
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function tierColor(tier) { return getComputedStyle(document.documentElement).getPropertyValue(TIER_VAR[tier] || "--navy").trim(); }
+function tierOf(score) { for (const t of tiers) if (score < t.below) return t.name; return tiers.length ? tiers[tiers.length - 1].name : "LOW"; }
+function fmtDate(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ""; }
+
+async function api(path, opts = {}, timeoutMs = 30000) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    const res = await fetch(API + path, { ...opts, signal: ctl.signal,
+      headers: { "Content-Type": "application/json", ...(opts.headers || {}) } });
+    let body = null;
+    try { body = await res.json(); } catch (_) { /* non-JSON */ }
+    if (!res.ok) throw new Error((body && (body.error || body.detail)) || ("Request failed (" + res.status + ")"));
+    return body;
+  } catch (e) {
+    if (e.name === "AbortError") throw new Error("The request took too long. Please try again.");
+    if (e instanceof TypeError) throw new Error("Cannot reach the server. Is uvicorn running?");
+    throw e;
+  } finally { clearTimeout(timer); }
+}
+
+/* ── users ─────────────────────────────────────────────────────────────── */
+async function loadUsers() {
+  try {
+    users = await api("/demo/users");
+  } catch (e) { showLoadError(e.message); return; }
+  const sel = $("user");
+  sel.innerHTML = users.map((u) => `<option value="${esc(u.id)}">${esc(u.name)}</option>`).join("");
+  const start = users.find((u) => u.scenario === "luteal_strain") || users[0];
+  if (start) { sel.value = start.id; selectUser(start.id); }
+  sel.addEventListener("change", () => selectUser(sel.value));
+}
+function selectUser(id) {
+  current = users.find((u) => u.id === id) || null;
+  window.scrollTo({ top: 0 });
+  $("chat").innerHTML = "";
+  $("fallMsg").textContent = "";
+  $("fallbox").style.display = current && current.scenario === "recent_fall" ? "flex" : "none";
+  addBot("Hi! Ask me about your fall risk, or try one of the prompts above.", { plain: true });
+  loadScore();
+}
+function showLoadError(msg) { const el = $("loadError"); el.textContent = msg; el.style.display = msg ? "block" : "none"; }
+
+/* ── fall-risk score ───────────────────────────────────────────────────── */
+async function loadScore() {
+  if (!current) return;
+  const uid = current.id;
+  $("scoreBody").innerHTML = '<span class="muted">Loading…</span>';
+  showLoadError("");
+  let d;
+  try { d = await api("/fall-risk/" + encodeURIComponent(uid)); }
+  catch (e) { if (current && current.id === uid) { $("scoreBody").innerHTML = `<div class="error">${esc(e.message)}</div>`; clearDetails(); } return; }
+  if (!current || current.id !== uid) return;           // user changed while loading
+  tiers = d.tiers || [];
+  renderScore(d); renderLayers(d); renderContributors(d); renderCorrelations(d); renderTrend(d);
+}
+function clearDetails() {
+  $("layers").innerHTML = "—"; $("contributors").innerHTML = ""; $("contribNote").textContent = "";
+  $("correlations").innerHTML = ""; $("trend").innerHTML = "—";
+}
+function renderScore(d) {
+  if (!d.enough_history) { $("scoreBody").innerHTML = `<p>${esc(d.message)}</p>`; clearDetails(); return; }
+  let h = `<div class="score-row">
+      <div class="score ${esc(d.tier)}">${esc(d.score)}<small> /100</small></div>
+      <span class="badge bg-${esc(d.tier)}">${esc(d.tier)}</span></div>
+    <div class="facts">
+      <span>Confidence <b>${esc(d.coverage)}%</b>${d.low_confidence ? " (low)" : ""}</span>
+      <span>Data from <b>${esc(fmtDate(d.latest_data_date))}</b></span>
+      ${d.trend_7d != null ? `<span>7-day average <b>${esc(d.trend_7d)}</b></span>` : ""}
+    </div>
+    <div class="facts muted"><span>Falls in past year: <b>${esc(d.falls_365)}</b></span>
+      <span>Recent near-falls: <b>${esc(d.near_falls_14)}</b></span></div>`;
+  if (d.stale) h += `<div class="stale">⚠ Ring data is ${esc(d.data_age_days)} days old — estimate less reliable</div>`;
+  if (d.cycle && d.cycle.applied) {
+    const wo = d.cycle.score_without_correction != null ? `; without it the score would be ${esc(d.cycle.score_without_correction)}` : "";
+    h += `<div class="cycle">${esc(cap(d.cycle.phase))} phase, day ${esc(d.cycle.cycle_day)} of ${esc(d.cycle.cycle_length)} — cycle-aware baseline applied${wo}.</div>`;
+  }
+  $("scoreBody").innerHTML = h;
+}
+function renderLayers(d) {
+  $("layers").innerHTML = (d.layers || []).map((l) => {
+    const t = tierOf(l.risk);
+    return `<div class="layer"><div><b>${esc(l.name)}</b></div>
+      <div class="bar" title="risk ${esc(l.risk)}"><span style="width:${Math.max(0, Math.min(100, l.risk))}%;background:${tierColor(t)}"></span></div>
+      <div class="w">risk ${esc(Math.round(l.risk))} · weight ${esc(Number(l.weight).toFixed(2))}</div></div>`;
+  }).join("") || "—";
+}
+function renderContributors(d) {
+  const items = (d.contributors || []).filter((c) => c.points >= 0.1);
+  $("contributors").innerHTML = items.length ? items.map((c) => {
+    const isCount = c.baseline == null;                        // fall / near-fall counts: the label already says what is counted
+    const unit = !c.unit || isCount ? "" : (c.unit.startsWith("/") ? c.unit : " " + c.unit);
+    const vs = c.baseline != null ? ` vs your baseline ${esc(c.baseline)}${esc(unit)}` : "";
+    return `<li><span><b>${esc(cap(c.label))}:</b> ${esc(c.value)}${esc(unit)}${vs}</span><span class="pts">+${esc(c.points)} pts</span></li>`;
+  }).join("") : '<li class="muted">All metrics are within your personal baseline range.</li>';
+  $("contribNote").textContent = items.length ? `Points add up to the score (total ${d.points_total}, shown rounded as ${d.score}).` : "";
+}
+function renderCorrelations(d) {
+  const cs = d.correlations || [];
+  $("correlations").innerHTML = cs.length ? cs.map((c) =>
+    `<li><span>${esc(cap(c.sentence))}</span><span class="muted" style="white-space:nowrap">r = ${esc(c.r)}, n = ${esc(c.n)} days</span></li>`).join("")
+    : '<li class="muted">No strong personal patterns found yet.</li>';
+}
+function renderTrend(d) {
+  const s = d.series || [];
+  if (!s.length) { $("trend").innerHTML = "—"; return; }
+  const W = 1100, H = 260, L = 44, R = 16, T = 12, B = 34, iw = W - L - R, ih = H - T - B;
+  const x = (i) => L + (s.length === 1 ? iw / 2 : (i * iw) / (s.length - 1));
+  const y = (v) => T + ih - (Math.max(0, Math.min(100, v)) / 100) * ih;
+  let g = "", lo = 0;
+  const bandFill = { LOW: "#e7f5ec", MODERATE: "#fdf1e2", HIGH: "#fdecec" };
+  for (const t of tiers) {
+    const hi = Math.min(100, t.below);
+    g += `<rect x="${L}" y="${y(hi)}" width="${iw}" height="${y(lo) - y(hi)}" fill="${bandFill[t.name] || "#f3f4f6"}"/>`;
+    g += `<text x="${L + iw - 6}" y="${y(hi) + 16}" text-anchor="end" fill="${tierColor(t.name)}" font-weight="700">${esc(t.name)}</text>`;
+    if (hi < 100) g += `<line x1="${L}" x2="${L + iw}" y1="${y(hi)}" y2="${y(hi)}" stroke="#c7ccd6" stroke-dasharray="4 4"/>
+      <text x="${L - 6}" y="${y(hi) + 5}" text-anchor="end">${esc(hi)}</text>`;
+    lo = hi;
+  }
+  const pts = s.map((p, i) => `${x(i)},${y(p.score)}`).join(" ");
+  g += `<polyline points="${pts}" fill="none" stroke="#1d2f82" stroke-width="3" stroke-linejoin="round"/>`;
+  s.forEach((p, i) => {
+    g += `<circle cx="${x(i)}" cy="${y(p.score)}" r="5" fill="${tierColor(p.tier)}" stroke="#fff" stroke-width="1.5"><title>${esc(fmtDate(p.date))}: ${esc(p.score)}</title></circle>`;
+  });
+  const last = s[s.length - 1];
+  g += `<text x="${x(s.length - 1)}" y="${y(last.score) - 12}" text-anchor="middle" font-weight="700">${esc(last.score)}</text>`;
+  g += `<text x="${L}" y="${H - 8}">${esc(fmtDate(s[0].date))}</text><text x="${L + iw}" y="${H - 8}" text-anchor="end">${esc(fmtDate(last.date))} (today)</text>`;
+  $("trend").innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Fall-risk score trend">${g}</svg>
+    <div class="note">Daily fall-risk score, last ${esc(s.length)} days, each computed only from data up to that day.</div>`;
+}
+
+/* ── chat ───────────────────────────────────────────────────────────────── */
+function scrollChat() { const c = $("chat"); c.scrollTop = c.scrollHeight; }
+function addUser(text) {
+  $("chat").insertAdjacentHTML("beforeend", `<div class="msg user"><div class="bubble">${esc(text)}</div></div>`); scrollChat();
+}
+function addBot(text, opt = {}) {
+  const emergency = !opt.plain && /^EMERGENCY DETECTED/.test(text || "");
+  const cls = opt.error ? "err" : (emergency ? "emergency" : "");
+  let h = `<div class="msg bot"><div class="bubble ${cls}">${emergency ? "🚨 " : ""}${esc(text)}`;
+  if (opt.card && opt.card.type === "fall_risk") h += miniCard(opt.card.data || {});
+  if (opt.pipeline) h += pipelinePanel(opt.pipeline);
+  h += "</div></div>";
+  $("chat").insertAdjacentHTML("beforeend", h); scrollChat();
+}
+function miniCard(c) {
+  const tops = (c.top_contributors || []).map((t) => `${esc(t.label)} +${esc(t.points)}`).join(" · ");
+  return `<div class="mini"><span class="big ${esc(c.tier)}">${esc(c.score)}</span>/100
+    <span class="badge bg-${esc(c.tier)}" style="font-size:15px;padding:3px 10px">${esc(c.tier)}</span>
+    <span class="muted"> · confidence ${esc(c.coverage)}%${c.trend_7d != null ? " · 7-day avg " + esc(c.trend_7d) : ""}${c.stale ? " · STALE" : ""}</span>
+    ${tops ? `<div class="muted" style="margin-top:4px">${tops}</div>` : ""}</div>`;
+}
+function num2(v) { return v == null ? "—" : Number(v).toFixed(2); }
+function sig(name, on) { return `<span class="sig ${on ? "on" : "off"}">${esc(name)}${on ? " ✓" : ""}</span>`; }
+function pipelinePanel(p) {
+  const s = p.safety || {}, r = p.router || {}, sv = p.self_verification || {};
+  const kw = (s.keyword_triggered || []).length > 0;
+  let svText = "not needed (all numbers grounded)";
+  if (sv.skipped) svText = "skipped (" + sv.skipped + ")";
+  else if (sv.triggered) svText = `${num2(sv.score_before)} → ${num2(sv.score_after)}`;
+  if (p.is_emergency) svText = "not applicable (emergency reply)";
+  const rows = [
+    ["Safety signals", sig("Keyword", kw) + sig("LLM", s.llm_triggered) + sig("Ring fall event", s.biometric_triggered)
+      + (s.keyword_overridden ? '<span class="muted">keyword overridden by LLM</span>' : "")],
+    ["Data streams fetched", p.is_emergency ? "none (emergency short-circuit)" : ((p.streams || []).join(", ") || "none (general question)")],
+    ["Router confidence", r.confidence != null ? `${num2(r.confidence)}${r.widened ? " · safety widening applied" : ""}` : "—"],
+    ["Grounding score", p.grounding_score != null ? `${num2(p.grounding_score)}${p.numbers_checked != null ? ` (${p.numbers_checked} numbers checked)` : ""}` : "—"],
+    ["Self-verification", esc(svText)],
+    ["Latency", p.timing_total_s != null ? `${p.timing_total_s} s` : "—"],
+  ];
+  return `<details class="how"><summary>How this answer was produced</summary><table>${
+    rows.map(([k, v]) => `<tr><td class="muted">${esc(k)}</td><td>${v}</td></tr>`).join("")}</table></details>`;
+}
+function setBusy(b) {
+  busy = b; $("send").disabled = b; $("input").disabled = b;
+  document.querySelectorAll(".chip").forEach((c) => (c.disabled = b));
+  const t = $("typing");
+  if (b && !t) { $("chat").insertAdjacentHTML("beforeend", '<div class="msg bot" id="typing"><div class="bubble"><span class="typing"><i></i><i></i><i></i></span></div></div>'); scrollChat(); }
+  if (!b && t) t.remove();
+}
+async function send(text) {
+  text = (text || "").trim();
+  if (!text || busy || !current) return;
+  const uid = current.id;
+  addUser(text); $("input").value = ""; setBusy(true);
+  try {
+    const d = await api("/demo/chat", { method: "POST", body: JSON.stringify({ message: text, user_id: uid }) }, CHAT_TIMEOUT_MS);
+    if (!current || current.id !== uid) return;
+    addBot(d.reply, { card: d.card, pipeline: d.pipeline });
+  } catch (e) {
+    if (current && current.id === uid) addBot("Sorry — " + e.message, { error: true });
+  } finally { setBusy(false); $("input").focus(); }
+}
+
+/* ── simulate ring fall ─────────────────────────────────────────────────── */
+async function fallNow() {
+  if (!current) return;
+  const btn = $("fallBtn"); btn.disabled = true; $("fallMsg").textContent = "Logging fall event…";
+  try {
+    const d = await api("/demo/fall-now/" + encodeURIComponent(current.id), { method: "POST" });
+    $("fallMsg").textContent = `Fall event logged — valid for ${d.valid_minutes} minutes. Now type 'I'm fine, just a bit shaken'.`;
+    loadScore();
+  } catch (e) { $("fallMsg").textContent = "Could not log the fall event: " + e.message; }
+  finally { btn.disabled = false; }
+}
+
+/* ── wire up ────────────────────────────────────────────────────────────── */
+$("chips").innerHTML = PROMPTS.map((p) => `<button class="chip" type="button">${esc(p)}</button>`).join("");
+$("chips").addEventListener("click", (e) => { if (e.target.classList.contains("chip")) send(e.target.textContent); });
+$("send").addEventListener("click", () => send($("input").value));
+$("input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send($("input").value); } });
+$("fallBtn").addEventListener("click", fallNow);
+loadUsers();
+</script>
+</body>
+</html>
