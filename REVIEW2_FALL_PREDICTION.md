@@ -57,3 +57,28 @@ Caveats: retrospective labels (discrimination, not prospective prediction); lowe
 
 ### v2 detector (signal-quality refinement)
 v1 produced step-time CV of ~8-9 % in both groups, implausibly high for steady walking. v2 adds turn removal (yaw gyroscope), McCamley-style initial-contact detection with a person-specific step period, physiological plausibility checks, and stride-time CV (Hausdorff 2001) instead of step-time CV. On a synthetic ground-truth bench with turns and left/right asymmetry (`py scripts/gait_synthetic_bench.py`), v1 overestimated variability by 6.8 points (r = 0.61 with truth) and v2 by 0.5 points (r ≈ 0.97–0.98 (varies slightly with numpy version)). `run_ltmm_validation.py` reports v1 and v2 side by side; both are reported regardless of which scores higher.
+
+## Live demo page
+
+A browser page with the fall-risk score and the AI assistant, for the five synthetic demo users.
+Backend: `routers/fall_risk.py`, `routers/demo.py`; page: `static/demo.html` (no build step, no external scripts).
+
+**Prerequisites**
+1. `schema_fall.sql` has been run once in the Supabase SQL editor.
+2. `py seed_fall_demo.py` has been run **the same day** (the data is generated relative to today).
+3. `.env` contains `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and `GROQ_API_KEY`. Without an LLM key the score cards still work and ring/keyword emergencies are still detected, but ordinary chat answers show a friendly error.
+
+**Start (Windows PowerShell, from the repo folder)**
+```powershell
+py -m pip install -r requirements.txt
+py -m uvicorn main:app --reload
+```
+Open http://127.0.0.1:8000/demo
+
+**Demo script**
+1. **Meera** (selected by default): point at the score, tier, the four layers with their weights, *Why this score* and the cycle note. Click **"Why is my fall risk high?"**: the answer only uses the listed contributors; open *How this answer was produced* to show the streams, grounding score and self-verification.
+2. Still Meera: click **"I fell asleep on the couch last night"**: no alarm.
+3. Switch to **Lakshmi**: click **Simulate ring fall event** (logs one uncancelled fall, valid for 30 minutes; nothing is sent to anyone), then **"I'm fine, just a bit shaken"**: the reply is an EMERGENCY, and the pipeline panel shows the *Ring fall event* signal (in the evaluation, the LLM classifier alone did not flag this message).
+4. Switch to **Ravi**: the yellow banner says the ring data is days old and the estimate is less reliable.
+
+The demo endpoints (`/api/v1/demo/*`) only accept the five demo user ids; any other id gets 403.
