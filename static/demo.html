@@ -264,8 +264,7 @@
     <div class="hw-stage" id="hwStage" aria-live="polite"></div>
     <div class="hw-controls">
       <button type="button" class="hw-btn" id="hwPrev">◀ Previous</button>
-      <button type="button" class="hw-btn main" id="hwPlay">▶ Play</button>
-      <button type="button" class="hw-btn" id="hwNext">Next ▶</button>
+      <button type="button" class="hw-btn main" id="hwNext">Next ▶</button>
       <button type="button" class="hw-btn" id="hwReplay">↺ Replay</button>
       <span class="hw-count" id="hwCount"></span>
     </div>
@@ -520,10 +519,9 @@ loadUsers();
   const RM = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const TITLES = ["Your personal normal", "How unusual is today?", "Strain 0–100",
                   "Four layers, evidence-derived weights", "Adding it up"];
-  const STEP_MS = [4500, 4500, 4000, 6500, 7500];
   const LAYER_COLOR = { FH: "#1d2f82", MO: "#0e7490", P: "#7c3aed", RC: "#be185d" };
   const GAUGE_MAX = 4;
-  let data = null, step = 0, playing = false, timer = null, gen = 0, noCycle = false;
+  let data = null, step = 0, gen = 0, noCycle = false;
 
   function h(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -755,7 +753,7 @@ loadUsers();
 
   /* ── player ─────────────────────────────────────────────────────────────── */
   function render() {
-    gen++; clearTimeout(timer); noCycle = false;
+    gen++; noCycle = false;
     byId("hwDots").querySelectorAll(".hw-dot").forEach((d, i) => {
       d.classList.toggle("on", i === step); d.classList.toggle("done", i < step);
       d.setAttribute("aria-current", i === step ? "step" : "false");
@@ -775,33 +773,20 @@ loadUsers();
       if (d && !RM) after(d, () => setGrow(el)); else setGrow(el);
     }));
     if (step === 4) frame(start5);
-    updatePlay();
-    if (playing) {
-      if (step < 4) timer = setTimeout(() => { step++; render(); }, STEP_MS[step]);
-      else { playing = false; updatePlay(); }
-    }
   }
-  function updatePlay() { byId("hwPlay").textContent = playing ? "❚❚ Pause" : "▶ Play"; }
-  function go(i, keepPlaying) { step = Math.max(0, Math.min(4, i)); if (!keepPlaying) playing = false; render(); }
-  function togglePlay() {
-    if (!data) return;
-    if (playing) { playing = false; clearTimeout(timer); updatePlay(); return; }
-    playing = true;
-    if (step === 4) step = 0;
-    render();
-  }
+  function go(i) { step = Math.max(0, Math.min(4, i)); render(); }
 
   function notice() {
     const n = byId("hwNotice");
     n.innerHTML = data && data.stale && data.enough_history
       ? `<div class="hw-warn">⚠ Ring data is ${h(data.data_age_days)} days old — the calculation uses the latest available readings.</div>` : "";
   }
-  function setControls(on) { ["hwPrev", "hwPlay", "hwNext", "hwReplay"].forEach((id) => { byId(id).disabled = !on; }); }
+  function setControls(on) { ["hwPrev", "hwNext", "hwReplay"].forEach((id) => { byId(id).disabled = !on; }); }
 
   async function open() {
     const user = typeof current !== "undefined" ? current : null;
     if (!user) return;
-    gen++; clearTimeout(timer); data = null; step = 0; playing = false;
+    gen++; data = null; step = 0;
     byId("hwUser").textContent = user.name;
     byId("hwNotice").innerHTML = "";
     stage.innerHTML = '<p class="muted" style="font-size:19px">Loading the calculation…</p>';
@@ -823,12 +808,11 @@ loadUsers();
     notice();
     if (!data.enough_history) { stage.innerHTML = `<p style="font-size:19px">${h(data.message)}</p>`; return; }
     setControls(true);
-    playing = !RM;
     render();
   }
   function close() {
     if (overlay.hidden) return;
-    gen++; clearTimeout(timer); playing = false;
+    gen++;
     overlay.hidden = true;
     document.body.style.overflow = "";
     openBtn.focus();
@@ -844,8 +828,7 @@ loadUsers();
   overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
   byId("hwPrev").addEventListener("click", () => go(step - 1));
   byId("hwNext").addEventListener("click", () => go(step + 1));
-  byId("hwPlay").addEventListener("click", togglePlay);
-  byId("hwReplay").addEventListener("click", () => { playing = !RM; go(0, true); });
+  byId("hwReplay").addEventListener("click", () => go(0));
   document.addEventListener("keydown", (e) => {
     if (overlay.hidden) return;
     if (e.key === "Escape") { close(); return; }
